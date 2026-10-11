@@ -64,9 +64,10 @@ const srj: SimpleRouteJson = {
 const checkPair = (engine: AutoroutingDrcEngine, a: Segment, b: Segment) =>
   (
     engine as unknown as {
-      checkTracePair: (a: Segment, b: Segment) =>
-        | { actual_clearance: number }
-        | undefined
+      checkTracePair: (
+        a: Segment,
+        b: Segment,
+      ) => { actual_clearance: number } | undefined
     }
   ).checkTracePair(a, b)
 
@@ -192,9 +193,9 @@ test("trace distance gate preserves native gap decisions and callbacks", () => {
       return 0.1
     },
   }
-  expect(
-    canSkip({ ...a, width: boxed as unknown as number }, b, 0.1),
-  ).toBe(false)
+  expect(canSkip({ ...a, width: boxed as unknown as number }, b, 0.1)).toBe(
+    false,
+  )
   expect(canSkip(a, b, boxed as unknown as number)).toBe(false)
   expect(
     canSkip(

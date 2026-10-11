@@ -202,9 +202,12 @@ const canSkipTracePairDistance = (
   // Preserve the legacy orientation result before skipping point distances.
   return (
     (Math.min(a.start.x, a.end.x) - Math.max(b.start.x, b.end.x) > separation ||
-      Math.min(b.start.x, b.end.x) - Math.max(a.start.x, a.end.x) > separation ||
-      Math.min(a.start.y, a.end.y) - Math.max(b.start.y, b.end.y) > separation ||
-      Math.min(b.start.y, b.end.y) - Math.max(a.start.y, a.end.y) > separation) &&
+      Math.min(b.start.x, b.end.x) - Math.max(a.start.x, a.end.x) >
+        separation ||
+      Math.min(a.start.y, a.end.y) - Math.max(b.start.y, b.end.y) >
+        separation ||
+      Math.min(b.start.y, b.end.y) - Math.max(a.start.y, a.end.y) >
+        separation) &&
     !doSegmentsIntersect(a.start, a.end, b.start, b.end)
   )
 }

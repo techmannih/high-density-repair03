@@ -1,0 +1,243 @@
+import { expect, test } from "bun:test"
+import {
+  doSegmentsIntersect,
+  segmentToSegmentMinDistance,
+} from "@tscircuit/math-utils"
+import { readFileSync } from "node:fs"
+import { AutoroutingDrcEngine } from "../lib/drc/AutoroutingDrcEngine"
+import type { SimpleRouteJson, SimplifiedPcbTraces } from "../lib/types"
+
+type Point = { x: number; y: number }
+type Segment = {
+  kind: "trace_segment"
+  order: number
+  traceId: string
+  netId: string
+  start: Point
+  end: Point
+  width: number
+  layer: string
+  pcbPortIds: string[]
+}
+const source = readFileSync(
+  new URL("../lib/drc/AutoroutingDrcEngine.ts", import.meta.url),
+  "utf8",
+)
+const canSkip = new Function(
+  "doSegmentsIntersect",
+  "DRC_EPSILON",
+  new Bun.Transpiler({ loader: "ts" }).transformSync(
+    source.slice(
+      source.indexOf("const isBoundedTracePoint ="),
+      source.indexOf("class SpatialHash<T>"),
+    ),
+  ) + "\nreturn canSkipTracePairDistance;",
+)(doSegmentsIntersect, 0.005) as (
+  a: Segment,
+  b: Segment,
+  clearance: number,
+) => boolean
+const segment = (
+  id: string,
+  start: Point,
+  end: Point,
+  width = 0.1,
+): Segment => ({
+  kind: "trace_segment",
+  order: 0,
+  traceId: id,
+  netId: id,
+  start,
+  end,
+  width,
+  layer: "top",
+  pcbPortIds: [],
+})
+const srj: SimpleRouteJson = {
+  bounds: { minX: -5, minY: -5, maxX: 5, maxY: 5 },
+  layerCount: 2,
+  minTraceWidth: 0.1,
+  minViaDiameter: 0.3,
+  connections: [],
+  obstacles: [],
+}
+const checkPair = (engine: AutoroutingDrcEngine, a: Segment, b: Segment) =>
+  (
+    engine as unknown as {
+      checkTracePair: (a: Segment, b: Segment) =>
+        | { actual_clearance: number }
+        | undefined
+    }
+  ).checkTracePair(a, b)
+
+// The native distance helper is the independent numeric oracle. The gate only
+// removes work after its original intersection predicate has returned false.
+test("trace distance gate preserves native gap decisions and callbacks", () => {
+  let seed = 18473
+  const random = (): number => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return seed / 4294967296
+  }
+  const engine = new AutoroutingDrcEngine(srj)
+  let rejected = 0
+  for (let index = 0; index < 1000; index++) {
+    const point = (): Point => ({
+      x: random() * 20 - 10,
+      y: random() * 20 - 10,
+    })
+    const a = segment("a", point(), point(), random())
+    const b = segment("b", point(), point(), random())
+    const gap =
+      segmentToSegmentMinDistance(a.start, a.end, b.start, b.end) -
+      a.width / 2 -
+      b.width / 2
+    if (canSkip(a, b, 0.1)) {
+      rejected++
+      expect(gap).toBeGreaterThan(0.1 - 0.005)
+    }
+    const error = checkPair(engine, a, b)
+    if (gap > 0.1 - 0.005) expect(error).toBeUndefined()
+    else expect(error!.actual_clearance).toBe(gap)
+  }
+  expect(rejected).toBeGreaterThan(100)
+  expect(engine.lastRunStats.exactCheckCount).toBe(1000)
+
+  for (const origin of [-1e9, 0, 1e9 - 1]) {
+    for (const length of [0, 1e-170, 0.1]) {
+      for (const separation of [0.194999, 0.2, 0.205, 0.205001, 0.4]) {
+        const a = segment(
+          "a",
+          { x: origin, y: 0 },
+          { x: origin + length, y: 0 },
+        )
+        const b = segment(
+          "b",
+          { x: origin, y: separation },
+          { x: origin + length, y: separation },
+        )
+        const gap =
+          segmentToSegmentMinDistance(a.start, a.end, b.start, b.end) -
+          a.width / 2 -
+          b.width / 2
+        if (canSkip(a, b, 0.1)) {
+          expect(gap).toBeGreaterThan(0.095)
+        }
+        const error = checkPair(engine, a, b)
+        if (gap > 0.095) expect(error).toBeUndefined()
+        else expect(error!.actual_clearance).toBe(gap)
+      }
+    }
+  }
+
+  const cancellation = [
+    segment(
+      "a",
+      { x: 100, y: 277.08762483671313 },
+      { x: 919.6560543728992, y: 49.971075547494685 },
+      75,
+    ),
+    segment(
+      "b",
+      { x: 1229.701747186482, y: -35.93874906507412 },
+      { x: 2100, y: -277.08762483671313 },
+      75,
+    ),
+  ]
+  expect(canSkip(cancellation[0]!, cancellation[1]!, 0.1)).toBe(false)
+  const cancellationTraces: SimplifiedPcbTraces = cancellation.map((item) => ({
+    type: "pcb_trace",
+    pcb_trace_id: item.traceId,
+    connection_name: item.netId,
+    route: [item.start, item.end].map((point) => ({
+      route_type: "wire",
+      ...point,
+      width: item.width,
+      layer: "top",
+    })),
+  }))
+  const legacyError = new AutoroutingDrcEngine(srj, {
+    spatialCellSize: 10000,
+  }).evaluate(cancellationTraces)
+  expect(legacyError.errors[0]!.actual_clearance).toBe(-75)
+
+  const a = segment("a", { x: 0, y: 0 }, { x: 1, y: 0 })
+  const b = segment("b", { x: 0, y: 1 }, { x: 1, y: 1 })
+  for (const value of [NaN, Infinity, 1e10, "1"]) {
+    expect(canSkip({ ...a, width: value as number }, b, 0.1)).toBe(false)
+    expect(canSkip(a, b, value as number)).toBe(false)
+    for (const point of ["start", "end"] as const) {
+      for (const axis of ["x", "y"] as const) {
+        expect(
+          canSkip(
+            {
+              ...a,
+              [point]: { ...a[point], [axis]: value },
+            },
+            b,
+            0.1,
+          ),
+        ).toBe(false)
+      }
+    }
+  }
+  for (const value of [-0.1, 1e10]) {
+    expect(canSkip({ ...a, width: value }, b, 0.1)).toBe(false)
+    expect(canSkip(a, b, value)).toBe(false)
+  }
+
+  const calls: string[] = []
+  const boxed = {
+    valueOf: () => {
+      calls.push("width")
+      return 0.1
+    },
+  }
+  expect(
+    canSkip({ ...a, width: boxed as unknown as number }, b, 0.1),
+  ).toBe(false)
+  expect(canSkip(a, b, boxed as unknown as number)).toBe(false)
+  expect(
+    canSkip(
+      {
+        ...a,
+        start: { x: boxed as unknown as number, y: 0 },
+      },
+      b,
+      0.1,
+    ),
+  ).toBe(false)
+  expect(calls).toEqual([])
+  const live = segment("b", { x: 0, y: 1 }, { x: 1, y: 1 })
+  live.width = boxed as unknown as number
+  const connected = new AutoroutingDrcEngine(srj, {
+    connMap: {
+      areIdsConnected: () => {
+        calls.push("connected")
+        live.start.y = 0
+        live.end.y = 0
+        return false
+      },
+      getNetConnectedToId: (id: string) => {
+        calls.push(id)
+        return undefined
+      },
+    } as never,
+  })
+  expect(checkPair(connected, a, live)!.actual_clearance).toBe(-0.1)
+  expect(calls).toEqual(["connected", "a", "b", "width"])
+  expect(connected.lastRunStats.exactCheckCount).toBe(1)
+
+  calls.length = 0
+  const sameNet = new AutoroutingDrcEngine(srj, {
+    connMap: {
+      areIdsConnected: () => {
+        calls.push("connected")
+        return true
+      },
+      getNetConnectedToId: () => undefined,
+    } as never,
+  })
+  expect(checkPair(sameNet, a, live)).toBeUndefined()
+  expect(calls).toEqual(["connected"])
+  expect(sameNet.lastRunStats.exactCheckCount).toBe(0)
+})

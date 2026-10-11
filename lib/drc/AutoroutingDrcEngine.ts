@@ -1,4 +1,5 @@
 import {
+  doSegmentsIntersect,
   getSegmentIntersection,
   pointToSegmentClosestPoint,
   segmentToBoundsMinDistance,
@@ -20,13 +21,6 @@ type Bounds = {
   minY: number
   maxX: number
   maxY: number
-}
-
-type SpatialHashCell = {
-  cellX: number
-  cellY: number
-  generation: number
-  itemIds: number[]
 }
 
 type WireRoutePoint = Extract<
@@ -176,62 +170,57 @@ const getObstacleBounds = (obstacle: StaticObstacle): Bounds => ({
   maxY: obstacle.y + obstacle.height / 2,
 })
 
+const isBoundedTracePoint = (point: Point): boolean =>
+  Number.isFinite(point.x) &&
+  Number.isFinite(point.y) &&
+  Math.abs(point.x) <= 1e9 &&
+  Math.abs(point.y) <= 1e9
+
+const canSkipTracePairDistance = (
+  a: TraceSegment,
+  b: TraceSegment,
+  clearance: number,
+): boolean => {
+  if (
+    !Number.isFinite(a.width) ||
+    !Number.isFinite(b.width) ||
+    !Number.isFinite(clearance) ||
+    a.width < 0 ||
+    b.width < 0 ||
+    clearance < 0 ||
+    a.width > 1e9 ||
+    b.width > 1e9 ||
+    clearance > 1e9 ||
+    !isBoundedTracePoint(a.start) ||
+    !isBoundedTracePoint(a.end) ||
+    !isBoundedTracePoint(b.start) ||
+    !isBoundedTracePoint(b.end)
+  ) {
+    return false
+  }
+  const separation = a.width / 2 + b.width / 2 + clearance + DRC_EPSILON
+  // Preserve the legacy orientation result before skipping point distances.
+  return (
+    (Math.min(a.start.x, a.end.x) - Math.max(b.start.x, b.end.x) > separation ||
+      Math.min(b.start.x, b.end.x) - Math.max(a.start.x, a.end.x) > separation ||
+      Math.min(a.start.y, a.end.y) - Math.max(b.start.y, b.end.y) > separation ||
+      Math.min(b.start.y, b.end.y) - Math.max(a.start.y, a.end.y) > separation) &&
+    !doSegmentsIntersect(a.start, a.end, b.start, b.end)
+  )
+}
+
 class SpatialHash<T> {
-  private readonly cells = new Map<number, Map<number, SpatialHashCell>>()
+  private readonly cells = new Map<number, Map<number, number[]>>()
   private readonly itemIds = new Map<T, number>()
   private readonly rowItems: T[] = []
-  private readonly rowBounds: Bounds[] = []
   private visitedGenerations = new Uint32Array(0)
   private queryGeneration = 0
-  private buildGeneration = 1
-  private activeCells: SpatialHashCell[] = []
-  private previousCells: SpatialHashCell[] = []
 
   constructor(private readonly cellSize: number) {}
 
-  reset(): void {
-    this.itemIds.clear()
-    this.rowItems.length = 0
-    this.rowBounds.length = 0
-    const previousCells = this.previousCells
-    this.previousCells = this.activeCells
-    this.activeCells = previousCells
-    this.activeCells.length = 0
-    this.buildGeneration = (this.buildGeneration + 1) >>> 0
-    if (this.buildGeneration === 0) this.buildGeneration = 1
-  }
-
-  finishBuild(): boolean {
-    // Retain cell arrays only where consecutive candidates occupy the same
-    // cells. Removed layers and moved copper do not accumulate historical data.
-    for (const cell of this.previousCells) {
-      if (cell.generation === this.buildGeneration) continue
-      const column = this.cells.get(cell.cellX)!
-      column.delete(cell.cellY)
-      if (column.size === 0) this.cells.delete(cell.cellX)
-    }
-    this.previousCells.length = 0
-    if (
-      this.visitedGenerations.length > Math.max(16, this.rowItems.length * 4)
-    ) {
-      this.visitedGenerations = new Uint32Array(
-        Math.max(16, this.rowItems.length * 2),
-      )
-    }
-    return this.rowItems.length > 0
-  }
-
-  private registerItem(item: T, bounds: Bounds): number {
-    const itemBounds = { ...bounds }
+  private registerItem(item: T): number {
     const existingId = this.itemIds.get(item)
-    if (existingId !== undefined) {
-      const existingBounds = this.rowBounds[existingId]!
-      existingBounds.minX = Math.min(existingBounds.minX, itemBounds.minX)
-      existingBounds.minY = Math.min(existingBounds.minY, itemBounds.minY)
-      existingBounds.maxX = Math.max(existingBounds.maxX, itemBounds.maxX)
-      existingBounds.maxY = Math.max(existingBounds.maxY, itemBounds.maxY)
-      return existingId
-    }
+    if (existingId !== undefined) return existingId
 
     const itemId = this.rowItems.length
     if (itemId >= this.visitedGenerations.length) {
@@ -246,37 +235,10 @@ class SpatialHash<T> {
     this.itemIds.set(item, itemId)
     // Set iteration canonicalizes primitive negative zero to positive zero.
     this.rowItems.push(item === 0 ? (0 as T) : item)
-    this.rowBounds.push(itemBounds)
-    return itemId
-  }
-
-  private registerFreshItem(item: T, bounds: Bounds): number {
-    const itemId = this.rowItems.length
-    if (itemId >= this.visitedGenerations.length) {
-      const generations = new Uint32Array(
-        this.visitedGenerations.length === 0
-          ? 16
-          : this.visitedGenerations.length * 2,
-      )
-      generations.set(this.visitedGenerations)
-      this.visitedGenerations = generations
-    }
-    this.rowItems.push(item)
-    this.rowBounds.push(bounds)
     return itemId
   }
 
   insert(item: T, bounds: Bounds): void {
-    this.insertInternal(item, bounds, false)
-  }
-
-  // Only newly collected segment records use this path: each is inserted
-  // once into its sole layer, and its expanded bounds are private to this build.
-  insertFresh(item: T, bounds: Bounds): void {
-    this.insertInternal(item, bounds, true)
-  }
-
-  private insertInternal(item: T, bounds: Bounds, fresh: boolean): void {
     const minCellX = Math.floor(bounds.minX / this.cellSize)
     const maxCellX = Math.floor(bounds.maxX / this.cellSize)
     const minCellY = Math.floor(bounds.minY / this.cellSize)
@@ -286,26 +248,17 @@ class SpatialHash<T> {
     for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
       let column = this.cells.get(cellX)
       if (!column && minCellY <= maxCellY) {
-        column = new Map<number, SpatialHashCell>()
+        column = new Map<number, number[]>()
         this.cells.set(cellX, column)
       }
       for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
-        let cell = column!.get(cellY)
-        if (!cell) {
-          cell = { cellX, cellY, generation: this.buildGeneration, itemIds: [] }
-          column!.set(cellY, cell)
-          this.activeCells.push(cell)
-        } else if (cell.generation !== this.buildGeneration) {
-          cell.generation = this.buildGeneration
-          cell.itemIds.length = 0
-          this.activeCells.push(cell)
+        const items = column!.get(cellY)
+        if (itemId === undefined) itemId = this.registerItem(item)
+        if (items) {
+          items.push(itemId)
+        } else {
+          column!.set(cellY, [itemId])
         }
-        if (itemId === undefined) {
-          itemId = fresh
-            ? this.registerFreshItem(item, bounds)
-            : this.registerItem(item, bounds)
-        }
-        cell.itemIds.push(itemId)
       }
     }
   }
@@ -334,23 +287,11 @@ class SpatialHash<T> {
         continue
       }
       for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
-        const cell = column?.get(cellY)
-        if (!cell || cell.generation !== this.buildGeneration) continue
-        for (const itemId of cell.itemIds) {
+        const items = column?.get(cellY)
+        if (!items) continue
+        for (const itemId of items) {
           if (this.visitedGenerations[itemId] === generation) continue
           this.visitedGenerations[itemId] = generation
-          const itemBounds = this.rowBounds[itemId]!
-          // A shared grid cell is only a coarse candidate. Copper and clearance
-          // are already included in the inserted bounds, so strict separation
-          // cannot hide a violation and surviving items keep their cell order.
-          if (
-            itemBounds.maxX < bounds.minX ||
-            itemBounds.minX > bounds.maxX ||
-            itemBounds.maxY < bounds.minY ||
-            itemBounds.minY > bounds.maxY
-          ) {
-            continue
-          }
           results.push(this.rowItems[itemId]!)
         }
       }
@@ -514,12 +455,6 @@ export class AutoroutingDrcEngine {
     string,
     SpatialHash<StaticObstacle>
   >()
-
-  private readonly dynamicIndexesByLayer = new Map<
-    string,
-    SpatialHash<DynamicCollidable>
-  >()
-  private viaPairIndex?: SpatialHash<Via>
 
   lastRunStats: AutoroutingDrcEngineRunStats = {
     traceCount: 0,
@@ -780,26 +715,22 @@ export class AutoroutingDrcEngine {
     segments: TraceSegment[],
     vias: Via[],
   ): Map<string, SpatialHash<DynamicCollidable>> {
-    const indexes = this.dynamicIndexesByLayer
-    for (const index of indexes.values()) index.reset()
+    const indexes = new Map<string, SpatialHash<DynamicCollidable>>()
     const addToLayer = (
       layer: string,
       item: DynamicCollidable,
       bounds: Bounds,
-      fresh = false,
     ) => {
       let index = indexes.get(layer)
       if (!index) {
         index = new SpatialHash<DynamicCollidable>(this.cellSize)
         indexes.set(layer, index)
       }
-      const expandedBounds = expandBounds(bounds, this.traceClearance)
-      if (fresh) index.insertFresh(item, expandedBounds)
-      else index.insert(item, expandedBounds)
+      index.insert(item, expandBounds(bounds, this.traceClearance))
     }
 
     for (const segment of segments) {
-      addToLayer(segment.layer, segment, getSegmentBounds(segment), true)
+      addToLayer(segment.layer, segment, getSegmentBounds(segment))
     }
     for (const via of vias) {
       for (const layer of via.layers) {
@@ -807,9 +738,6 @@ export class AutoroutingDrcEngine {
       }
     }
 
-    for (const [layer, index] of indexes) {
-      if (!index.finishBuild()) indexes.delete(layer)
-    }
     return indexes
   }
 
@@ -825,6 +753,10 @@ export class AutoroutingDrcEngine {
   ): AutoroutingDrcError | undefined {
     if (this.areConnected(segmentA.netId, segmentB.netId)) return undefined
     this.lastRunStats.exactCheckCount += 1
+
+    if (canSkipTracePairDistance(segmentA, segmentB, this.traceClearance)) {
+      return undefined
+    }
 
     const gap =
       segmentToSegmentMinDistance(
@@ -999,20 +931,12 @@ export class AutoroutingDrcEngine {
   }
 
   private checkViaPairs(vias: Via[]): AutoroutingDrcError[] {
-    if (vias.length < 2) {
-      if (this.viaPairIndex) {
-        this.viaPairIndex.reset()
-        this.viaPairIndex.finishBuild()
-      }
-      return []
-    }
+    if (vias.length < 2) return []
     const errors: AutoroutingDrcError[] = []
-    const index = (this.viaPairIndex ??= new SpatialHash<Via>(this.cellSize))
-    index.reset()
+    const index = new SpatialHash<Via>(this.cellSize)
     for (const via of vias) {
       index.insert(via, expandBounds(getViaBounds(via), this.viaClearance))
     }
-    index.finishBuild()
 
     for (const viaA of vias) {
       for (const viaB of index.query(getViaBounds(viaA))) {

@@ -2,6 +2,7 @@ import {
   doSegmentsIntersect,
   getSegmentIntersection,
   pointToSegmentClosestPoint,
+  pointToSegmentDistance,
   segmentToBoundsMinDistance,
   segmentToCircleMinDistance,
   segmentToSegmentMinDistance,
@@ -38,6 +39,7 @@ type TraceSegment = {
   width: number
   layer: string
   pcbPortIds: string[]
+  distanceBounds?: Bounds
 }
 
 type Via = {
@@ -176,40 +178,45 @@ const isBoundedTracePoint = (point: Point): boolean =>
   Math.abs(point.x) <= 1e9 &&
   Math.abs(point.y) <= 1e9
 
-const canSkipTracePairDistance = (
-  a: TraceSegment,
-  b: TraceSegment,
+const getTracePairDistance = (
+  segmentA: TraceSegment,
+  segmentB: TraceSegment,
   clearance: number,
-): boolean => {
+): number => {
+  const boundsA = segmentA.distanceBounds
+  const boundsB = segmentB.distanceBounds
+  const a = segmentA.start
+  const b = segmentA.end
+  const u = segmentB.start
+  const v = segmentB.end
   if (
-    !Number.isFinite(a.width) ||
-    !Number.isFinite(b.width) ||
+    !boundsA ||
+    !boundsB ||
     !Number.isFinite(clearance) ||
-    a.width < 0 ||
-    b.width < 0 ||
     clearance < 0 ||
-    a.width > 1e9 ||
-    b.width > 1e9 ||
-    clearance > 1e9 ||
-    !isBoundedTracePoint(a.start) ||
-    !isBoundedTracePoint(a.end) ||
-    !isBoundedTracePoint(b.start) ||
-    !isBoundedTracePoint(b.end)
+    clearance > 1e9
   ) {
-    return false
+    return segmentToSegmentMinDistance(a, b, u, v)
   }
-  const separation = a.width / 2 + b.width / 2 + clearance + DRC_EPSILON
-  // Preserve the legacy orientation result before skipping point distances.
-  return (
-    (Math.min(a.start.x, a.end.x) - Math.max(b.start.x, b.end.x) > separation ||
-      Math.min(b.start.x, b.end.x) - Math.max(a.start.x, a.end.x) >
-        separation ||
-      Math.min(a.start.y, a.end.y) - Math.max(b.start.y, b.end.y) >
-        separation ||
-      Math.min(b.start.y, b.end.y) - Math.max(a.start.y, a.end.y) >
-        separation) &&
-    !doSegmentsIntersect(a.start, a.end, b.start, b.end)
-  )
+  if (a.x === b.x && a.y === b.y) return pointToSegmentDistance(a, u, v)
+  if (u.x === v.x && u.y === v.y) return pointToSegmentDistance(u, a, b)
+  if (doSegmentsIntersect(a, b, u, v)) return 0
+  const separation = clearance + DRC_EPSILON
+  if (
+    boundsA.minX - boundsB.maxX > separation ||
+    boundsB.minX - boundsA.maxX > separation ||
+    boundsA.minY - boundsB.maxY > separation ||
+    boundsB.minY - boundsA.maxY > separation
+  ) {
+    return Infinity
+  }
+  const distances = [
+    pointToSegmentDistance(a, u, v),
+    pointToSegmentDistance(b, u, v),
+    pointToSegmentDistance(u, a, b),
+    pointToSegmentDistance(v, a, b),
+  ]
+  return Math.min(...distances)
 }
 
 class SpatialHash<T> {
@@ -688,6 +695,7 @@ export class AutoroutingDrcEngine {
           width: getWireWidth(start, end),
           layer: start.layer,
           pcbPortIds,
+          distanceBounds: undefined,
         })
       }
 
@@ -733,7 +741,18 @@ export class AutoroutingDrcEngine {
     }
 
     for (const segment of segments) {
-      addToLayer(segment.layer, segment, getSegmentBounds(segment))
+      const layer = segment.layer
+      const bounds = getSegmentBounds(segment)
+      if (
+        Number.isFinite(segment.width) &&
+        segment.width >= 0 &&
+        segment.width <= 1e9 &&
+        isBoundedTracePoint(segment.start) &&
+        isBoundedTracePoint(segment.end)
+      ) {
+        segment.distanceBounds = bounds
+      }
+      addToLayer(layer, segment, bounds)
     }
     for (const via of vias) {
       for (const layer of via.layers) {
@@ -757,17 +776,8 @@ export class AutoroutingDrcEngine {
     if (this.areConnected(segmentA.netId, segmentB.netId)) return undefined
     this.lastRunStats.exactCheckCount += 1
 
-    if (canSkipTracePairDistance(segmentA, segmentB, this.traceClearance)) {
-      return undefined
-    }
-
     const gap =
-      segmentToSegmentMinDistance(
-        segmentA.start,
-        segmentA.end,
-        segmentB.start,
-        segmentB.end,
-      ) -
+      getTracePairDistance(segmentA, segmentB, this.traceClearance) -
       segmentA.width / 2 -
       segmentB.width / 2
     if (gap > this.traceClearance - DRC_EPSILON) return undefined

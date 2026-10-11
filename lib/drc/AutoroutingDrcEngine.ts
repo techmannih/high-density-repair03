@@ -211,7 +211,9 @@ class SpatialHash<T> {
       if (column.size === 0) this.cells.delete(cell.cellX)
     }
     this.previousCells.length = 0
-    if (this.visitedGenerations.length > Math.max(16, this.rowItems.length * 4)) {
+    if (
+      this.visitedGenerations.length > Math.max(16, this.rowItems.length * 4)
+    ) {
       this.visitedGenerations = new Uint32Array(
         Math.max(16, this.rowItems.length * 2),
       )

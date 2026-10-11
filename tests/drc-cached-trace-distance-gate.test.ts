@@ -41,11 +41,7 @@ const distance = new Function(
   pointToSegmentDistance,
   segmentToSegmentMinDistance,
   0.005,
-) as (
-  a: Segment,
-  b: Segment,
-  clearance: number,
-) => number
+) as (a: Segment, b: Segment, clearance: number) => number
 const segment = (
   id: string,
   start: Point,
@@ -74,9 +70,10 @@ const srj: SimpleRouteJson = {
 const checkPair = (engine: AutoroutingDrcEngine, a: Segment, b: Segment) =>
   (
     engine as unknown as {
-      checkTracePair: (a: Segment, b: Segment) =>
-        | { actual_clearance: number }
-        | undefined
+      checkTracePair: (
+        a: Segment,
+        b: Segment,
+      ) => { actual_clearance: number } | undefined
     }
   ).checkTracePair(a, b)
 
@@ -278,7 +275,11 @@ test("cached trace distance preserves native gaps and callbacks", () => {
   })
   expect(mutating.evaluate(routes).errors[0]!.actual_clearance).toBe(-0.05)
   expect(mutating.lastRunStats.exactCheckCount).toBe(1)
-  expect(routes[1]!.route[0]!.y).toBe(20)
+  const mutatedPoint = routes[1]!.route[0]!
+  if (mutatedPoint.route_type !== "wire") {
+    throw new Error("Expected a wire point in the mutable trace fixture")
+  }
+  expect(mutatedPoint.y).toBe(20)
 
   const descriptor = Object.getOwnPropertyDescriptor(
     Object.prototype,

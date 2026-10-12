@@ -1,10 +1,7 @@
 import { expect, spyOn, test } from "bun:test"
 import { ConnectivityMap } from "circuit-json-to-connectivity-map"
 import { AutoroutingDrcEngine } from "../lib/drc/AutoroutingDrcEngine"
-import type {
-  SimpleRouteJson,
-  SimplifiedPcbTrace,
-} from "../lib/types"
+import type { SimpleRouteJson, SimplifiedPcbTrace } from "../lib/types"
 
 type WirePoint = Extract<
   SimplifiedPcbTrace["route"][number],
@@ -285,7 +282,7 @@ test("DRC query result cache preserves ordered results and logical stats across 
     expect(new Set(specialPrimitiveIds).size).toBe(specialValues.length)
     for (let index = 0; index < specialValues.length; index++) {
       expect(internals.getPrimitiveId([specialValues[index]])).toBe(
-        specialPrimitiveIds[index],
+        specialPrimitiveIds[index]!,
       )
     }
   } finally {

@@ -446,16 +446,22 @@ export class AutoroutingDrcEngine {
   private readonly obstacles: StaticObstacle[]
   private readonly queryResultBudget: number
   private readonly primitiveKeyBudget: number
-  private readonly primitiveIdsByKey = new Map<string, { id: number; units: number }>()
+  private readonly primitiveIdsByKey = new Map<
+    string,
+    { id: number; units: number }
+  >()
   private primitiveKeyUnits = 0
   private nextPrimitiveId = 0
   private readonly staticObstacleIds = new WeakMap<StaticObstacle, number>()
-  private readonly queryResultCache = new Map<string, {
-    errors: AutoroutingDrcError[]
-    exactCheckCount: number
-    broadPhaseCandidateCount: number
-    units: number
-  }>()
+  private readonly queryResultCache = new Map<
+    string,
+    {
+      errors: AutoroutingDrcError[]
+      exactCheckCount: number
+      broadPhaseCandidateCount: number
+      units: number
+    }
+  >()
   private queryResultUnits = 0
   private cachedConnectivityKey?: string
   private readonly obstacleIndexesByLayer = new Map<
@@ -477,8 +483,13 @@ export class AutoroutingDrcEngine {
     options: AutoroutingDrcEngineOptions = {},
   ) {
     const queryResultCacheBudget = options.queryResultCacheBudget ?? 8_000_000
-    if (!Number.isSafeInteger(queryResultCacheBudget) || queryResultCacheBudget < 0) {
-      throw new Error("queryResultCacheBudget must be a nonnegative safe integer")
+    if (
+      !Number.isSafeInteger(queryResultCacheBudget) ||
+      queryResultCacheBudget < 0
+    ) {
+      throw new Error(
+        "queryResultCacheBudget must be a nonnegative safe integer",
+      )
     }
     this.primitiveKeyBudget = Math.floor(queryResultCacheBudget / 4)
     this.queryResultBudget = queryResultCacheBudget - this.primitiveKeyBudget
@@ -514,7 +525,9 @@ export class AutoroutingDrcEngine {
 
     this.compileConnectionAliases()
     this.obstacles = this.compileStaticObstacles()
-    this.obstacles.forEach((obstacle, index) => this.staticObstacleIds.set(obstacle, index))
+    this.obstacles.forEach((obstacle, index) =>
+      this.staticObstacleIds.set(obstacle, index),
+    )
     this.indexStaticObstacles()
   }
 
@@ -715,11 +728,19 @@ export class AutoroutingDrcEngine {
           width: getWireWidth(start, end),
           layer: start.layer,
           pcbPortIds,
-          primitiveId: traceOwnershipKey === undefined ? undefined : this.getPrimitiveId([
-            "trace", traceOwnershipKey,
-            start.x, start.y, end.x, end.y,
-            getWireWidth(start, end), start.layer,
-          ]),
+          primitiveId:
+            traceOwnershipKey === undefined
+              ? undefined
+              : this.getPrimitiveId([
+                  "trace",
+                  traceOwnershipKey,
+                  start.x,
+                  start.y,
+                  end.x,
+                  end.y,
+                  getWireWidth(start, end),
+                  start.layer,
+                ]),
         })
       }
 
@@ -730,7 +751,8 @@ export class AutoroutingDrcEngine {
         viaLocations.add(locationKey)
 
         const viaId = `via_${vias.length}`
-        const diameter = routePoint.via_diameter ?? this.srj.minViaDiameter ?? 0.3
+        const diameter =
+          routePoint.via_diameter ?? this.srj.minViaDiameter ?? 0.3
         const layers = getViaDrillLayers(
           routePoint,
           this.srj.layerCount,
@@ -746,10 +768,18 @@ export class AutoroutingDrcEngine {
           y: routePoint.y,
           diameter,
           layers,
-          primitiveId: this.queryResultBudget ? this.getPrimitiveId([
-            "via", viaId, trace.pcb_trace_id, netId,
-            routePoint.x, routePoint.y, diameter, layers,
-          ]) : undefined,
+          primitiveId: this.queryResultBudget
+            ? this.getPrimitiveId([
+                "via",
+                viaId,
+                trace.pcb_trace_id,
+                netId,
+                routePoint.x,
+                routePoint.y,
+                diameter,
+                layers,
+              ])
+            : undefined,
         })
       }
     }
@@ -795,18 +825,24 @@ export class AutoroutingDrcEngine {
 
   private getPrimitiveId(values: unknown[]): number | undefined {
     if (!this.primitiveKeyBudget) return undefined
-    const key = JSON.stringify(values.map((value) => {
-      if (typeof value !== "number") return value
-      if (Object.is(value, -0)) return "-0"
-      if (Number.isNaN(value)) return "NaN"
-      if (value === Infinity) return "+Infinity"
-      if (value === -Infinity) return "-Infinity"
-      return value
-    }))
+    const key = JSON.stringify(
+      values.map((value) => {
+        if (typeof value !== "number") return value
+        if (Object.is(value, -0)) return "-0"
+        if (Number.isNaN(value)) return "NaN"
+        if (value === Infinity) return "+Infinity"
+        if (value === -Infinity) return "-Infinity"
+        return value
+      }),
+    )
     const existing = this.primitiveIdsByKey.get(key)
     if (existing) return existing.id
     const units = key.length + 64
-    if (units > this.primitiveKeyBudget || this.nextPrimitiveId >= Number.MAX_SAFE_INTEGER) return undefined
+    if (
+      units > this.primitiveKeyBudget ||
+      this.nextPrimitiveId >= Number.MAX_SAFE_INTEGER
+    )
+      return undefined
     while (this.primitiveKeyUnits + units > this.primitiveKeyBudget) {
       const oldestKey = this.primitiveIdsByKey.keys().next().value!
       this.primitiveKeyUnits -= this.primitiveIdsByKey.get(oldestKey)!.units
@@ -818,8 +854,12 @@ export class AutoroutingDrcEngine {
     return id
   }
 
-  private getQueryCacheKey(kind: string, ids: Array<number | undefined>): string | undefined {
-    if (!this.queryResultBudget || ids.some((id) => id === undefined)) return undefined
+  private getQueryCacheKey(
+    kind: string,
+    ids: Array<number | undefined>,
+  ): string | undefined {
+    if (!this.queryResultBudget || ids.some((id) => id === undefined))
+      return undefined
     return `${kind}:${ids.join(",")}`
   }
 
@@ -827,18 +867,25 @@ export class AutoroutingDrcEngine {
     key: string | undefined,
     compute: () => AutoroutingDrcError[],
   ): AutoroutingDrcError[] {
-    const existing = key === undefined ? undefined : this.queryResultCache.get(key)
+    const existing =
+      key === undefined ? undefined : this.queryResultCache.get(key)
     if (existing) {
-      // Report the logical work of the original evaluator, including no-error checks.
+      // Preserve logical check counts on cache hits, including queries with no errors.
       this.lastRunStats.exactCheckCount += existing.exactCheckCount
-      this.lastRunStats.broadPhaseCandidateCount += existing.broadPhaseCandidateCount
+      this.lastRunStats.broadPhaseCandidateCount +=
+        existing.broadPhaseCandidateCount
       return existing.errors.length ? structuredClone(existing.errors) : []
     }
     const initialExactCheckCount = this.lastRunStats.exactCheckCount
-    const initialBroadPhaseCandidateCount = this.lastRunStats.broadPhaseCandidateCount
+    const initialBroadPhaseCandidateCount =
+      this.lastRunStats.broadPhaseCandidateCount
     const errors = compute()
     if (key === undefined) return errors
-    const units = key.length + (errors.length ? JSON.stringify(errors).length : 0) + errors.length * 64 + 64
+    const units =
+      key.length +
+      (errors.length ? JSON.stringify(errors).length : 0) +
+      errors.length * 64 +
+      64
     if (units > this.queryResultBudget) return errors
     while (this.queryResultUnits + units > this.queryResultBudget) {
       const oldestKey = this.queryResultCache.keys().next().value!
@@ -847,8 +894,11 @@ export class AutoroutingDrcEngine {
     }
     this.queryResultCache.set(key, {
       errors: errors.length ? structuredClone(errors) : [],
-      exactCheckCount: this.lastRunStats.exactCheckCount - initialExactCheckCount,
-      broadPhaseCandidateCount: this.lastRunStats.broadPhaseCandidateCount - initialBroadPhaseCandidateCount,
+      exactCheckCount:
+        this.lastRunStats.exactCheckCount - initialExactCheckCount,
+      broadPhaseCandidateCount:
+        this.lastRunStats.broadPhaseCandidateCount -
+        initialBroadPhaseCandidateCount,
       units,
     })
     this.queryResultUnits += units
@@ -860,25 +910,36 @@ export class AutoroutingDrcEngine {
     dynamicCandidates: DynamicCollidable[],
     obstacleCandidates: StaticObstacle[],
   ): AutoroutingDrcError[] {
-    this.lastRunStats.broadPhaseCandidateCount += dynamicCandidates.length + obstacleCandidates.length
+    this.lastRunStats.broadPhaseCandidateCount +=
+      dynamicCandidates.length + obstacleCandidates.length
     let key: string | undefined
     if (this.queryResultBudget) {
       const ids: Array<number | undefined> = [segment.primitiveId]
       for (const candidate of dynamicCandidates) {
-        if (candidate.kind === "trace_segment" && candidate.order <= segment.order) continue
+        if (
+          candidate.kind === "trace_segment" &&
+          candidate.order <= segment.order
+        )
+          continue
         ids.push(candidate.primitiveId)
       }
       ids.push(-1)
-      for (const obstacle of obstacleCandidates) ids.push(this.staticObstacleIds.get(obstacle))
+      for (const obstacle of obstacleCandidates)
+        ids.push(this.staticObstacleIds.get(obstacle))
       key = this.getQueryCacheKey("trace", ids)
     }
     return this.runCachedQuery(key, () => {
       const errors: AutoroutingDrcError[] = []
       for (const candidate of dynamicCandidates) {
-        if (candidate.kind === "trace_segment" && candidate.order <= segment.order) continue
-        const error = candidate.kind === "trace_segment"
-          ? this.checkTracePair(segment, candidate)
-          : this.checkTraceVia(segment, candidate)
+        if (
+          candidate.kind === "trace_segment" &&
+          candidate.order <= segment.order
+        )
+          continue
+        const error =
+          candidate.kind === "trace_segment"
+            ? this.checkTracePair(segment, candidate)
+            : this.checkTraceVia(segment, candidate)
         if (error) errors.push(error)
       }
       for (const obstacle of obstacleCandidates) {
@@ -1086,7 +1147,10 @@ export class AutoroutingDrcEngine {
 
   private checkViaPairs(vias: Via[]): AutoroutingDrcError[] {
     const key = this.queryResultBudget
-      ? this.getQueryCacheKey("via-pairs", vias.map((via) => via.primitiveId))
+      ? this.getQueryCacheKey(
+          "via-pairs",
+          vias.map((via) => via.primitiveId),
+        )
       : undefined
     return this.runCachedQuery(key, () => this.computeViaPairs(vias))
   }
@@ -1210,7 +1274,9 @@ export class AutoroutingDrcEngine {
       const obstacleCandidates =
         this.obstacleIndexesByLayer.get(segment.layer)?.query(queryBounds) ?? []
 
-      detectedTraceErrors.push(...this.checkTraceQuery(segment, dynamicCandidates, obstacleCandidates))
+      detectedTraceErrors.push(
+        ...this.checkTraceQuery(segment, dynamicCandidates, obstacleCandidates),
+      )
     }
 
     const detectedViaErrors = this.checkViaPairs(vias)

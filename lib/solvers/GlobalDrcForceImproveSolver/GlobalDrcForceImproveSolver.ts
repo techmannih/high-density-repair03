@@ -183,6 +183,7 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
   readonly viaHoleDiameter?: number
   readonly configuredMaxIterations?: number
   readonly enableBroadFallback: boolean
+  readonly enableBroadProposalCache: boolean
   readonly enableLargeBoardBroadFallback: boolean
   readonly enableTargetedErrorSweep: boolean
   readonly enablePostSolveClearanceRelaxation: boolean
@@ -222,6 +223,20 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
     count: number
   }
   private inputSnapshot?: DrcSnapshot
+  private static readonly nativeGetSnapshot =
+    GlobalDrcForceImproveSolver.prototype.getSnapshot
+  private readonly canCacheBroadProposals: boolean
+  private broadProposalCache?: {
+    bestRoutes: HighDensityRoute[]
+    srj: SimpleRouteJson
+    connMap?: ConnectivityMap
+    effort: number
+    allowSameNetViaPairs: boolean
+    proposals: [
+      HighDensityRoute[] | null | undefined,
+      HighDensityRoute[] | null | undefined,
+    ]
+  }
 
   constructor(params: GlobalDrcForceImproveSolverParams) {
     super()
@@ -232,8 +247,9 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
     this.effort = params.effort ?? 1
     this.drcEvaluator = params.drcEvaluator
     this.referenceDrcEvaluator = params.referenceDrcEvaluator
+    const suppliedAutoroutingDrcEngine = params.autoroutingDrcEngine
     this.autoroutingDrcEngine =
-      params.autoroutingDrcEngine ??
+      suppliedAutoroutingDrcEngine ??
       (params.drcEvaluator
         ? undefined
         : new AutoroutingDrcEngine(params.srj, {
@@ -273,6 +289,12 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
     }
     this.MAX_ITERATIONS =
       this.configuredMaxIterations ?? getBaseMaxIterations(this.effort)
+    this.enableBroadProposalCache = params.enableBroadProposalCache ?? false
+    this.canCacheBroadProposals =
+      this.enableBroadProposalCache &&
+      this.drcEvaluator === undefined &&
+      this.referenceDrcEvaluator === undefined &&
+      suppliedAutoroutingDrcEngine === undefined
   }
 
   override getConstructorParams() {
@@ -288,6 +310,7 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
         viaHoleDiameter: this.viaHoleDiameter,
         maxIterations: this.configuredMaxIterations,
         enableBroadFallback: this.enableBroadFallback,
+        enableBroadProposalCache: this.enableBroadProposalCache,
         enableLargeBoardBroadFallback: this.enableLargeBoardBroadFallback,
         enableTargetedErrorSweep: this.enableTargetedErrorSweep,
         enablePostSolveClearanceRelaxation:
@@ -330,6 +353,7 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
   }
 
   private finishAtLegacyCleanCheckpoint() {
+    this.broadProposalCache = undefined
     const checkpoint = this.legacyCleanCheckpoint
     if (!checkpoint) return false
     this.outputHdRoutes = checkpoint.routes
@@ -364,6 +388,70 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
       this.connMap,
       this.autoroutingDrcEngine,
     )
+  }
+
+  private getBroadCandidateRoutes(
+    bestRoutes: HighDensityRoute[],
+    passMultiplier: number,
+  ): HighDensityRoute[] {
+    if (
+      !this.canCacheBroadProposals ||
+      this.getSnapshot !== GlobalDrcForceImproveSolver.nativeGetSnapshot ||
+      this.drcEvaluator !== undefined ||
+      this.referenceDrcEvaluator !== undefined ||
+      (passMultiplier !== 1 && passMultiplier !== 2)
+    ) {
+      return applyBroadRepulsionForces(
+        this.srj,
+        bestRoutes,
+        this.effort,
+        passMultiplier,
+        this.connMap,
+        this.drcEvaluator === undefined,
+        false,
+      )
+    }
+
+    const srj = this.srj
+    const effort = this.effort
+    const connMap = this.connMap
+    const allowSameNetViaPairs = this.drcEvaluator === undefined
+    let cache = this.broadProposalCache
+    if (
+      !cache ||
+      cache.bestRoutes !== bestRoutes ||
+      cache.srj !== srj ||
+      cache.connMap !== connMap ||
+      !Object.is(cache.effort, effort) ||
+      cache.allowSameNetViaPairs !== allowSameNetViaPairs
+    ) {
+      cache = this.broadProposalCache = {
+        bestRoutes,
+        srj,
+        connMap,
+        effort,
+        allowSameNetViaPairs,
+        proposals: [undefined, undefined],
+      }
+    }
+    const index = passMultiplier === 1 ? 0 : 1
+    const cached = cache.proposals[index]
+    if (cached !== undefined) {
+      return cached === null ? bestRoutes : cloneRoutes(cached)
+    }
+    const proposal = applyBroadRepulsionForces(
+      srj,
+      bestRoutes,
+      effort,
+      passMultiplier,
+      connMap,
+      allowSameNetViaPairs,
+      false,
+    )
+    // Snapshot evaluation receives its own proposal, never the saved template.
+    cache.proposals[index] =
+      proposal === bestRoutes ? null : cloneRoutes(proposal)
+    return proposal
   }
 
   private getReferenceDrcSnapshot(routes: HighDensityRoute[]) {
@@ -406,6 +494,7 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
     routes: HighDensityRoute[],
     snapshot: DrcSnapshot,
   ) {
+    this.broadProposalCache = undefined
     const traceRelaxedRoutes = this.enablePostSolveClearanceRelaxation
       ? applyTraceToPadClearanceRelaxation(this.srj, routes, this.connMap)
       : routes
@@ -1398,17 +1487,9 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
       attemptedPeriodicLargeBoardBroadFallback =
         shouldTryPeriodicLargeBoardBroadFallback
       for (const passMultiplier of [1, EXTENDED_BROAD_FORCE_PASS_MULTIPLIER]) {
-        const broadCandidateRoutes = applyBroadRepulsionForces(
-          this.srj,
+        const broadCandidateRoutes = this.getBroadCandidateRoutes(
           bestRoutes,
-          this.effort,
           passMultiplier,
-          this.connMap,
-          this.drcEvaluator === undefined,
-          // This is a speculative candidate and is DRC-evaluated immediately.
-          // Final cleanup here can perturb branch selection and trigger another
-          // expensive broad attempt; direct/final broad outputs still clean up.
-          false,
         )
         if (broadCandidateRoutes === bestRoutes) continue
         const broadCandidateSnapshot = this.getSnapshot(broadCandidateRoutes)
@@ -1450,6 +1531,9 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
 
     this.outputHdRoutes = bestRoutes
     this.outputSnapshot = bestSnapshot
+    if (this.broadProposalCache?.bestRoutes !== bestRoutes) {
+      this.broadProposalCache = undefined
+    }
     this.stalledIterations = acceptedCandidate ? 0 : this.stalledIterations + 1
     if (!tracePairDetourAttemptedThisStep) {
       this.updateDrcCountPlateauState(bestSnapshot)

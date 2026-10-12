@@ -66,6 +66,14 @@ export type GlobalDrcForceImproveSolverParams = {
    * candidate after targeted candidates fail. Defaults to true.
    */
   enableBroadFallback?: boolean
+  /**
+   * Reuse deterministic broad proposals while the accepted route array is
+   * unchanged. Defaults to false. Opt in only with ordinary, immutable route
+   * metadata, SRJ and connectivity for this solver's lifetime; callers must
+   * not mutate accepted route geometry in place. Custom evaluators, engines
+   * and snapshot overrides retain uncached behavior.
+   */
+  enableBroadProposalCache?: boolean
   enableLargeBoardBroadFallback?: boolean
   enableTargetedErrorSweep?: boolean
   enablePostSolveClearanceRelaxation?: boolean

@@ -23,45 +23,61 @@ test("a lower DRC count cannot select a new immutable barrel clearance violation
       connectionName: "moving11",
       traceThickness: 0.1,
       viaDiameter: 0.3,
-      route: [{ ...original, z: 0 }, { ...original, z: 1 }],
+      route: [
+        { ...original, z: 0 },
+        { ...original, z: 1 },
+      ],
       vias: [original],
     },
     {
       connectionName: "wire1",
       traceThickness: 0.1,
       viaDiameter: 0.3,
-      route: [{ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }],
+      route: [
+        { x: 0, y: 0, z: 0 },
+        { x: 2, y: 0, z: 0 },
+      ],
       vias: [],
     },
     {
       connectionName: "wire2",
       traceThickness: 0.1,
       viaDiameter: 0.3,
-      route: [{ x: 1, y: -1, z: 0 }, { x: 1, y: 1, z: 0 }],
+      route: [
+        { x: 1, y: -1, z: 0 },
+        { x: 1, y: 1, z: 0 },
+      ],
       vias: [],
     },
     {
       connectionName: "wire3",
       traceThickness: 0.1,
       viaDiameter: 0.3,
-      route: [{ x: 0, y: -1, z: 0 }, { x: 2, y: 1, z: 0 }],
+      route: [
+        { x: 0, y: -1, z: 0 },
+        { x: 2, y: 1, z: 0 },
+      ],
       vias: [],
     },
   ]
-  const candidate = initial.map((route, index): HighDensityRoute =>
-    index === 0
-      ? {
-          ...route,
-          route: [{ ...moved, z: 0 }, { ...moved, z: 1 }],
-          vias: [moved],
-        }
-      : {
-          ...route,
-          route: [
-            { x: 0, y: 5 + index, z: 0 },
-            { x: 2, y: 5 + index, z: 0 },
-          ],
-        },
+  const candidate = initial.map(
+    (route, index): HighDensityRoute =>
+      index === 0
+        ? {
+            ...route,
+            route: [
+              { ...moved, z: 0 },
+              { ...moved, z: 1 },
+            ],
+            vias: [moved],
+          }
+        : {
+            ...route,
+            route: [
+              { x: 0, y: 5 + index, z: 0 },
+              { x: 2, y: 5 + index, z: 0 },
+            ],
+          },
   )
   const fixedTrace: SimplifiedPcbTraces[number] = {
     type: "pcb_trace",
@@ -132,7 +148,10 @@ test("a lower DRC count cannot select a new immutable barrel clearance violation
     isBetterDrcSnapshot(after, 1, before.count, before.issueScore, 0, before),
   ).toBe(false)
   expect(
-    isDrcSnapshotCountBetter({ ...after, candidateAdmissible: undefined }, before),
+    isDrcSnapshotCountBetter(
+      { ...after, candidateAdmissible: undefined },
+      before,
+    ),
   ).toBe(true)
   if (!lastInput)
     throw new Error("Expected the real materialized candidate evaluator input")
@@ -169,7 +188,8 @@ test("a lower DRC count cannot select a new immutable barrel clearance violation
     maxIterations: 1,
   })
   expect(
-    referencePortfolio["getReferenceDrcSnapshot"](candidate).candidateAdmissible,
+    referencePortfolio["getReferenceDrcSnapshot"](candidate)
+      .candidateAdmissible,
   ).toBe(false)
   expect(
     referenceForce["getReferenceDrcSnapshot"](candidate).candidateAdmissible,

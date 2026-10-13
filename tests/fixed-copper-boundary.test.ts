@@ -13,9 +13,7 @@ import type { HighDensityRoute } from "../types/high-density-types"
 
 type RoutePoint = Pick<HighDensityRoute["route"][number], "x" | "y" | "z">
 type PhysicalRouteJson = Omit<SimpleRouteJson, "obstacles"> & {
-  obstacles: Array<
-    SimpleRouteJson["obstacles"][number] & { shape?: "circle" }
-  >
+  obstacles: Array<SimpleRouteJson["obstacles"][number] & { shape?: "circle" }>
 }
 
 test("keeps retained copper boundaries fixed during repair", (): void => {
@@ -109,9 +107,7 @@ test("keeps retained copper boundaries fixed during repair", (): void => {
   ).toBe(true)
   expect(
     explicitFalse[0]!.route.map(({ x, y, z }): RoutePoint => ({ x, y, z })),
-  ).toEqual(
-    ordinary[0]!.route.map(({ x, y, z }): RoutePoint => ({ x, y, z })),
-  )
+  ).toEqual(ordinary[0]!.route.map(({ x, y, z }): RoutePoint => ({ x, y, z })))
 
   const anchored = cloneRoutes(input)
   anchored[0]!.route[0]!.isFixedToCopperBoundary = true
@@ -163,14 +159,7 @@ test("keeps retained copper boundaries fixed during repair", (): void => {
   if (!actualError) throw new Error("Expected a measured foreign-pad conflict")
   for (const routes of [duplicateBoundary, falseDuplicateBoundary]) {
     expect(
-      applySafeTraceLayerMoveForError(
-        srj,
-        routes,
-        actualError,
-        0,
-        1,
-        "full",
-      ),
+      applySafeTraceLayerMoveForError(srj, routes, actualError, 0, 1, "full"),
     ).toBe(true)
   }
   expect(

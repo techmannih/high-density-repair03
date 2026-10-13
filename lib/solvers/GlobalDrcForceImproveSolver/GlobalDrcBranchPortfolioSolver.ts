@@ -217,9 +217,7 @@ export class GlobalDrcBranchPortfolioSolver extends BaseSolver {
     selectedSolver?: GlobalDrcForceImproveSolver,
   ) {
     if (snapshot.candidateAdmissible === false) {
-      throw new Error(
-        "Cannot select a physically inadmissible repair branch",
-      )
+      throw new Error("Cannot select a physically inadmissible repair branch")
     }
     let acceptedRoutes = routes
     let acceptedSnapshot = snapshot
@@ -254,9 +252,7 @@ export class GlobalDrcBranchPortfolioSolver extends BaseSolver {
       }
     }
     if (acceptedSnapshot.candidateAdmissible === false) {
-      throw new Error(
-        "Cannot publish a physically inadmissible repair branch",
-      )
+      throw new Error("Cannot publish a physically inadmissible repair branch")
     }
     this.outputHdRoutes = acceptedRoutes
     this.selectedSolver = selectedSolver

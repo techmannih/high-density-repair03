@@ -343,7 +343,8 @@ export class GlobalDrcForceImproveSolver extends BaseSolver {
     }
     if (
       this.referenceDrcEvaluator &&
-      this.getReferenceDrcSnapshot(checkpoint.routes).candidateAdmissible === false
+      this.getReferenceDrcSnapshot(checkpoint.routes).candidateAdmissible ===
+        false
     ) {
       throw new Error(
         "Cannot publish a physically inadmissible reference checkpoint",

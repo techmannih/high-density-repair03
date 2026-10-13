@@ -249,7 +249,9 @@ const getDrcIssueScore = (
 export const getCandidateAdmissible = (
   result: DrcEvaluatorResult,
 ): boolean | undefined => {
-  const admissible = Array.isArray(result) ? undefined : result.candidateAdmissible
+  const admissible = Array.isArray(result)
+    ? undefined
+    : result.candidateAdmissible
   if (admissible !== undefined && typeof admissible !== "boolean") {
     throw new Error("Candidate admission must be a boolean when supplied")
   }
@@ -451,8 +453,7 @@ export const collectViaNodes = (
         x: current.x,
         y: current.y,
         radius: (route.viaDiameter ?? srj.minViaDiameter ?? 0.3) / 2,
-        movable:
-          endpointPointIndexes.length === 0 && !hasFixedCopperBoundary,
+        movable: endpointPointIndexes.length === 0 && !hasFixedCopperBoundary,
         canCanonicalize:
           !hasFixedCopperBoundary &&
           (endpointPointIndexes.length === 0 || !hasTaggedTerminal),
@@ -3930,9 +3931,7 @@ export const applyViaInPadLayerMoveForError = (
   const last = route.route.at(-1)
   if (!first || !last || first.z !== last.z || targetZ === first.z) return false
   if (route.route.some((point) => point.z !== first.z)) return false
-  if (
-    route.route.slice(1, -1).some((point) => point.isFixedToCopperBoundary)
-  ) {
+  if (route.route.slice(1, -1).some((point) => point.isFixedToCopperBoundary)) {
     return false
   }
   if (!first.pcb_port_id || !last.pcb_port_id) return false

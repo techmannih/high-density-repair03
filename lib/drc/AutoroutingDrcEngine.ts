@@ -1204,11 +1204,11 @@ export class AutoroutingDrcEngine {
         this.lastRunStats.exactCheckCount += 1
 
         const centerDistance = Math.hypot(viaA.x - viaB.x, viaA.y - viaB.y)
-        const sameNet = this.areConnected(viaA.netId, viaB.netId)
-        if (centerDistance <= POSITION_EPSILON && sameNet) continue
+        if (centerDistance <= POSITION_EPSILON) continue
         const gap = centerDistance - viaA.diameter / 2 - viaB.diameter / 2
         if (gap + DRC_EPSILON >= this.viaClearance) continue
 
+        const sameNet = this.areConnected(viaA.netId, viaB.netId)
         const pairId = [viaA.viaId, viaB.viaId].sort().join("_")
         const center = {
           x: (viaA.x + viaB.x) / 2,

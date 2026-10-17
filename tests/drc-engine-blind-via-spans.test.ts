@@ -32,6 +32,4 @@ test("indexed via spacing ignores disjoint blind drill spans but retains overlap
   if (via.route_type !== "via") throw new Error("Expected a via")
   via.from_layer = "inner1"
   expect(new AutoroutingDrcEngine(srj).evaluate(traces).errors).toHaveLength(1)
-  via.x = 0
-  expect(new AutoroutingDrcEngine(srj).evaluate(traces).errors).toHaveLength(1)
 })

@@ -50,6 +50,7 @@ export interface SimpleRouteJson {
   allowBlindAndBuriedVias?: boolean
   minBoardEdgeClearance?: number
   minTraceToPadEdgeClearance?: number
+  minTraceToHoleEdgeClearance?: number
   minViaEdgeToPadEdgeClearance?: number
   defaultObstacleMargin?: number
   obstacles: Obstacle[]
@@ -64,6 +65,8 @@ export interface SimpleRouteJson {
 }
 
 export interface Obstacle {
+  isNonPlatedHole?: boolean
+  shape?: "circle"
   obstacleId?: string
   type: "rect"
   layers: string[]

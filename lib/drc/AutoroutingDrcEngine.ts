@@ -65,7 +65,7 @@ type Via = {
 
 type StaticObstacle = {
   kind: "obstacle"
-  obstacleType: "pcb_smtpad" | "pcb_plated_hole"
+  obstacleType: "pcb_smtpad" | "pcb_plated_hole" | "pcb_hole"
   obstacleId: string
   connectedTo: string[]
   x: number
@@ -436,6 +436,7 @@ const createTraceErrorMessage = (
  */
 export class AutoroutingDrcEngine {
   private readonly traceClearance: number
+  private readonly traceToHoleClearance: number
   private readonly viaClearance: number
   private readonly viaToPadClearance: number
   private readonly cellSize: number
@@ -494,6 +495,7 @@ export class AutoroutingDrcEngine {
     this.primitiveKeyBudget = Math.floor(queryResultCacheBudget / 4)
     this.queryResultBudget = queryResultCacheBudget - this.primitiveKeyBudget
     this.traceClearance = options.traceClearance ?? DEFAULT_TRACE_CLEARANCE
+    this.traceToHoleClearance = this.srj.minTraceToHoleEdgeClearance ?? 0.2
     this.viaClearance = Math.max(
       options.viaClearance ?? MIN_VIA_CLEARANCE,
       MIN_VIA_CLEARANCE,
@@ -509,6 +511,14 @@ export class AutoroutingDrcEngine {
 
     if (!Number.isFinite(this.traceClearance) || this.traceClearance < 0) {
       throw new Error("traceClearance must be a non-negative finite number")
+    }
+    if (
+      !Number.isFinite(this.traceToHoleClearance) ||
+      this.traceToHoleClearance < 0
+    ) {
+      throw new Error(
+        "Trace-to-hole clearance must be a non-negative finite number",
+      )
     }
     if (!Number.isFinite(this.viaClearance)) {
       throw new Error("viaClearance must be a finite number")
@@ -606,6 +616,7 @@ export class AutoroutingDrcEngine {
     const obstacles: StaticObstacle[] = []
     const addedSmtPadIds = new Set<string>()
     const addedPlatedHoleIds = new Set<string>()
+    const addedNonPlatedHoleIds = new Set<string>()
 
     for (const obstacle of this.srj.obstacles) {
       if (obstacle.layers.length === 0) continue
@@ -618,22 +629,32 @@ export class AutoroutingDrcEngine {
       const pcbPortId = obstacle.connectedTo.find((id) =>
         id.startsWith("pcb_port_"),
       )
-      if (!smtPadId && !platedHoleId && !pcbPortId) continue
+      if (!smtPadId && !platedHoleId && !pcbPortId && !obstacle.isNonPlatedHole)
+        continue
 
       const isMultiLayer = obstacle.layers.length > 1
-      const obstacleType = isMultiLayer
-        ? ("pcb_plated_hole" as const)
-        : ("pcb_smtpad" as const)
-      const obstacleId = isMultiLayer
-        ? (platedHoleId ??
-          `pcb_plated_hole_${obstacle.center.x.toFixed(
-            3,
-          )}_${obstacle.center.y.toFixed(3)}`)
-        : (smtPadId ??
-          `pcb_smtpad_${obstacle.center.x.toFixed(
-            3,
-          )}_${obstacle.center.y.toFixed(3)}`)
-      const addedIds = isMultiLayer ? addedPlatedHoleIds : addedSmtPadIds
+      const obstacleType = obstacle.isNonPlatedHole
+        ? ("pcb_hole" as const)
+        : isMultiLayer
+          ? ("pcb_plated_hole" as const)
+          : ("pcb_smtpad" as const)
+      const obstacleId = obstacle.isNonPlatedHole
+        ? (obstacle.obstacleId ??
+          `pcb_hole_${obstacle.center.x}_${obstacle.center.y}`)
+        : isMultiLayer
+          ? (platedHoleId ??
+            `pcb_plated_hole_${obstacle.center.x.toFixed(
+              3,
+            )}_${obstacle.center.y.toFixed(3)}`)
+          : (smtPadId ??
+            `pcb_smtpad_${obstacle.center.x.toFixed(
+              3,
+            )}_${obstacle.center.y.toFixed(3)}`)
+      const addedIds = obstacle.isNonPlatedHole
+        ? addedNonPlatedHoleIds
+        : isMultiLayer
+          ? addedPlatedHoleIds
+          : addedSmtPadIds
       if (addedIds.has(obstacleId)) continue
       addedIds.add(obstacleId)
 
@@ -647,9 +668,11 @@ export class AutoroutingDrcEngine {
       // Explicit rotation describes a rectangular pad, including square pads.
       // Only legacy, unrotated multilayer obstacles use the circular inference.
       const isCircular =
-        !hasRotation &&
-        isMultiLayer &&
-        Math.abs(obstacle.width - obstacle.height) < 0.001
+        obstacle.shape === "circle" ||
+        (!obstacle.isNonPlatedHole &&
+          !hasRotation &&
+          isMultiLayer &&
+          Math.abs(obstacle.width - obstacle.height) < 0.001)
       obstacles.push({
         kind: "obstacle",
         obstacleType,
@@ -676,7 +699,11 @@ export class AutoroutingDrcEngine {
     for (const obstacle of this.obstacles) {
       const bounds = expandBounds(
         getObstacleBounds(obstacle),
-        Math.max(this.traceClearance, this.viaToPadClearance),
+        Math.max(
+          this.traceClearance,
+          this.viaToPadClearance,
+          obstacle.obstacleType === "pcb_hole" ? this.traceToHoleClearance : 0,
+        ),
       )
       for (const layer of obstacle.layers) {
         let index = this.obstacleIndexesByLayer.get(layer)
@@ -1061,7 +1088,11 @@ export class AutoroutingDrcEngine {
             radius: obstacle.radius,
           })
     const gap = shapeDistance - segment.width / 2
-    if (gap + DRC_EPSILON >= this.traceClearance) return undefined
+    const requiredClearance =
+      obstacle.obstacleType === "pcb_hole"
+        ? this.traceToHoleClearance
+        : this.traceClearance
+    if (gap + DRC_EPSILON >= requiredClearance) return undefined
 
     const errorId = `overlap_${segment.traceId}_${obstacle.obstacleId}`
 
@@ -1076,7 +1107,7 @@ export class AutoroutingDrcEngine {
       pcb_trace_id: segment.traceId,
       source_trace_id: "",
       pcb_trace_error_id: errorId,
-      minimum_clearance: this.traceClearance,
+      minimum_clearance: requiredClearance,
       actual_clearance: gap,
       pcb_component_ids: [],
       pcb_port_ids: [
@@ -1102,6 +1133,8 @@ export class AutoroutingDrcEngine {
     via: Via,
     obstacle: StaticObstacle,
   ): AutoroutingDrcError | undefined {
+    // Non-plated hole clearance is not a via-to-pad query.
+    if (obstacle.obstacleType === "pcb_hole") return undefined
     if (this.obstacleSharesNet(via.netId, obstacle)) return undefined
     this.lastRunStats.exactCheckCount += 1
 
@@ -1167,14 +1200,15 @@ export class AutoroutingDrcEngine {
       for (const viaB of index.query(getViaBounds(viaA))) {
         this.lastRunStats.broadPhaseCandidateCount += 1
         if (viaB.order <= viaA.order) continue
+        if (!viaA.layers.some((layer) => viaB.layers.includes(layer))) continue
         this.lastRunStats.exactCheckCount += 1
 
         const centerDistance = Math.hypot(viaA.x - viaB.x, viaA.y - viaB.y)
-        if (centerDistance <= POSITION_EPSILON) continue
+        const sameNet = this.areConnected(viaA.netId, viaB.netId)
+        if (centerDistance <= POSITION_EPSILON && sameNet) continue
         const gap = centerDistance - viaA.diameter / 2 - viaB.diameter / 2
         if (gap + DRC_EPSILON >= this.viaClearance) continue
 
-        const sameNet = this.areConnected(viaA.netId, viaB.netId)
         const pairId = [viaA.viaId, viaB.viaId].sort().join("_")
         const center = {
           x: (viaA.x + viaB.x) / 2,

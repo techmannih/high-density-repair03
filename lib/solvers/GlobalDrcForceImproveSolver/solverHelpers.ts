@@ -397,15 +397,14 @@ export const collectViaNodes = (
         pointIndexes.push(cursor)
       }
       const uniquePointIndexes = [...new Set(pointIndexes)]
-      const explicitSite = currentHasVia || nextHasVia
-      if (explicitSite) {
-        for (let pointIndex = 0; pointIndex < route.route.length; pointIndex++) {
-          if (
-            !uniquePointIndexes.includes(pointIndex) &&
-            areSameXY(route.route[pointIndex]!, viaPoint)
-          ) {
-            uniquePointIndexes.push(pointIndex)
-          }
+      for (let pointIndex = 0; pointIndex < route.route.length; pointIndex++) {
+        const point = route.route[pointIndex]!
+        if (
+          !uniquePointIndexes.includes(pointIndex) &&
+          Math.abs(point.x - viaPoint.x) <= POSITION_EPSILON &&
+          Math.abs(point.y - viaPoint.y) <= POSITION_EPSILON
+        ) {
+          uniquePointIndexes.push(pointIndex)
         }
       }
       if (
@@ -432,7 +431,6 @@ export const collectViaNodes = (
       if (srj.allowBlindAndBuriedVias) {
         const endpointZ = uniquePointIndexes.flatMap((pointIndex) => {
           const point = route.route[pointIndex]!
-          if (!explicitSite) return [point.z]
           const previous = route.route[pointIndex - 1]
           const following = route.route[pointIndex + 1]
           return [
@@ -737,6 +735,21 @@ const getCoincidentPointIndexes = (route: MutableRoute, pointIndex: number) => {
     const candidate = route.route[cursor]
     if (!candidate || !areSameXY(candidate, point)) break
     pointIndexes.push(cursor)
+  }
+
+  const viaGroup = route.vias.some((via) => areSameXY(via, point)) ||
+    pointIndexes.some((index) =>
+      (route.route[index - 1] && route.route[index - 1]!.z !== route.route[index]!.z) ||
+      (route.route[index + 1] && route.route[index + 1]!.z !== route.route[index]!.z),
+    )
+  if (viaGroup) {
+    for (let cursor = 0; cursor < route.route.length; cursor += 1) {
+      const candidate = route.route[cursor]!
+      if (
+        Math.abs(candidate.x - point.x) <= POSITION_EPSILON &&
+        Math.abs(candidate.y - point.y) <= POSITION_EPSILON
+      ) pointIndexes.push(cursor)
+    }
   }
 
   return [...new Set(pointIndexes)]

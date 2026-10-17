@@ -375,23 +375,39 @@ export const collectViaNodes = (
       const current = route.route[index]
       const next = route.route[index + 1]
       if (!current || !next) continue
-      if (current.z === next.z || !areSameXY(current, next)) continue
+      if (current.z === next.z) continue
+      const samePosition = areSameXY(current, next)
+      const currentHasVia = route.vias.some((via) => areSameXY(via, current))
+      const nextHasVia = route.vias.some((via) => areSameXY(via, next))
+      if (!samePosition && !currentHasVia && !nextHasVia) continue
+      const viaPoint = samePosition || currentHasVia ? current : next
       const routeSeenIndexes = (seenIndexes ??= new Set<number>())
 
-      const pointIndexes = [index, index + 1]
-      for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-        const point = route.route[cursor]
-        if (!point || !areSameXY(point, current)) break
+      // One physical via can occur several times in a route tree's walk.
+      // Moving only a contiguous visit detaches the other layer transitions.
+      const anchorIndex = samePosition || currentHasVia ? index : index + 1
+      const pointIndexes = samePosition ? [index, index + 1] : [anchorIndex]
+      for (let cursor = anchorIndex - 1; cursor >= 0; cursor -= 1) {
+        if (!areSameXY(route.route[cursor]!, viaPoint)) break
         pointIndexes.push(cursor)
       }
-      for (let cursor = index + 2; cursor < route.route.length; cursor += 1) {
-        const point = route.route[cursor]
-        if (!point || !areSameXY(point, current)) break
+      const initialEnd = samePosition ? index + 1 : anchorIndex
+      for (let cursor = initialEnd + 1; cursor < route.route.length; cursor += 1) {
+        if (!areSameXY(route.route[cursor]!, viaPoint)) break
         pointIndexes.push(cursor)
       }
-
-      // The initial pair and the two disjoint cursor ranges never repeat an index.
-      const uniquePointIndexes = pointIndexes
+      const uniquePointIndexes = [...new Set(pointIndexes)]
+      const explicitSite = currentHasVia || nextHasVia
+      if (explicitSite) {
+        for (let pointIndex = 0; pointIndex < route.route.length; pointIndex++) {
+          if (
+            !uniquePointIndexes.includes(pointIndex) &&
+            areSameXY(route.route[pointIndex]!, viaPoint)
+          ) {
+            uniquePointIndexes.push(pointIndex)
+          }
+        }
+      }
       if (
         uniquePointIndexes.some((pointIndex) =>
           routeSeenIndexes.has(pointIndex),
@@ -414,7 +430,17 @@ export const collectViaNodes = (
       let minZ = 0
       let maxZ = srj.layerCount - 1
       if (srj.allowBlindAndBuriedVias) {
-        const endpointZ = uniquePointIndexes.map((i) => route.route[i]!.z)
+        const endpointZ = uniquePointIndexes.flatMap((pointIndex) => {
+          const point = route.route[pointIndex]!
+          if (!explicitSite) return [point.z]
+          const previous = route.route[pointIndex - 1]
+          const following = route.route[pointIndex + 1]
+          return [
+            point.z,
+            ...(previous && previous.z !== point.z ? [previous.z] : []),
+            ...(following && following.z !== point.z ? [following.z] : []),
+          ]
+        })
         minZ = Math.min(...endpointZ)
         maxZ = Math.max(...endpointZ)
       }
@@ -423,8 +449,8 @@ export const collectViaNodes = (
         rootConnectionName: getRootConnectionName(route),
         pointIndexes: uniquePointIndexes,
         zLayers: Array.from({ length: maxZ - minZ + 1 }, (_, z) => minZ + z),
-        x: current.x,
-        y: current.y,
+        x: viaPoint.x,
+        y: viaPoint.y,
         radius: (route.viaDiameter ?? srj.minViaDiameter ?? 0.3) / 2,
         movable: endpointPointIndexes.length === 0,
         canCanonicalize:

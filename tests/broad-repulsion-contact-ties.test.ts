@@ -24,7 +24,17 @@ test("broad repulsion keeps the established contact choice for equal distances",
       false,
       false,
     )
-    expect(output).toEqual(fixture.expected)
+    // The same contact choice can differ by a few ulps across runtimes.
+    expect(output).toEqual(
+      fixture.expected.map((route) => ({
+        ...route,
+        route: route.route.map((point) => ({
+          ...point,
+          x: expect.closeTo(point.x, 14),
+          y: expect.closeTo(point.y, 14),
+        })),
+      })),
+    )
     expect(fixture.routes).toEqual(originalRoutes)
   }
 })

@@ -12,6 +12,13 @@ export type DrcEvaluatorInput = {
   routes?: HighDensityRoute[]
 }
 
+/**
+ * Trace-obstacle contacts should include pcb_trace_id and a stable obstacle ID
+ * (pcb_pad_id, pcb_smtpad_id, etc., or the obstacle ID quoted in the message).
+ * Trace IDs should match the supplied traces, or be stable caller-owned IDs.
+ * Opaque error IDs are not pair identities. Unidentifiable contacts are
+ * conservatively treated as new by the overlap output guard.
+ */
 export type DrcEvaluatorResult =
   | { errors: DrcError[]; errorsWithCenters?: DrcError[] }
   | DrcError[]
@@ -43,6 +50,8 @@ export type DrcSnapshot = {
   issueScore: number
   legacyIssueScore?: number
   traceRouteIndexById: Map<string, number>
+  /** Logical source connections stay stable when their route fragments change. */
+  traceConnectionNameById?: Map<string, string>
 }
 
 export type GlobalDrcForceImproveSolverParams = {

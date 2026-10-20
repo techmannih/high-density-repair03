@@ -106,9 +106,11 @@ const createSimplifiedTraces = (
 ): {
   traces: SimplifiedPcbTraces
   traceRouteIndexById: Map<string, number>
+  traceConnectionNameById: Map<string, string>
 } => {
   const traces: SimplifiedPcbTraces = []
   const traceRouteIndexById = new Map<string, number>()
+  const traceConnectionNameById = new Map<string, string>()
   const routesByConnectionName = new Map<
     string,
     Array<{ route: HighDensityRoute; routeIndex: number }>
@@ -155,10 +157,11 @@ const createSimplifiedTraces = (
           ),
         })
       traceRouteIndexById.set(traceId, hdRoute.routeIndex)
+      traceConnectionNameById.set(traceId, connection.name)
     }
   }
 
-  return { traces, traceRouteIndexById }
+  return { traces, traceRouteIndexById, traceConnectionNameById }
 }
 
 const getDrcErrorSeverity = (error: Record<string, unknown>) => {
@@ -247,11 +250,8 @@ const createDrcSnapshot = (
     (autoroutingDrcEngine && !drcEvaluator) || routesOnlyEvaluator
       ? srj
       : getConnMapAwareSrj(srj, connMap)
-  let { traces, traceRouteIndexById } = createSimplifiedTraces(
-    drcSrj,
-    routes,
-    !routesOnlyEvaluator,
-  )
+  let { traces, traceRouteIndexById, traceConnectionNameById } =
+    createSimplifiedTraces(drcSrj, routes, !routesOnlyEvaluator)
   const drcResult = drcEvaluator?.({
     srj: drcSrj,
     routes,
@@ -278,6 +278,7 @@ const createDrcSnapshot = (
         policy.getErrorSeverity,
       ),
       traceRouteIndexById,
+      traceConnectionNameById,
     }
   }
 
@@ -288,6 +289,7 @@ const createDrcSnapshot = (
     const fallbackInput = createSimplifiedTraces(drcSrj, routes)
     traces = fallbackInput.traces
     traceRouteIndexById = fallbackInput.traceRouteIndexById
+    traceConnectionNameById = fallbackInput.traceConnectionNameById
   }
 
   const drc =
@@ -325,6 +327,7 @@ const createDrcSnapshot = (
       policy.getErrorSeverity,
     ),
     traceRouteIndexById,
+    traceConnectionNameById,
   }
 }
 
@@ -3338,8 +3341,48 @@ export const getRepairDrcIssueScore = (snapshot: DrcSnapshot) => {
   return snapshot.legacyIssueScore ?? getDrcIssueScore(legacyErrors)
 }
 
-const getTraceObstacleOverlapIds = (snapshot: DrcSnapshot): Set<string> => {
-  const overlaps = new Set<string>()
+const getTraceObstaclePairIdentity = (
+  error: Record<string, unknown>,
+  snapshot: DrcSnapshot,
+): string | undefined => {
+  const traceId = error.pcb_trace_id
+  if (typeof traceId !== "string" || traceId.length === 0) return undefined
+  const explicitObstacleId = [
+    error.pcb_pad_id,
+    error.pcb_smtpad_id,
+    error.pcb_plated_hole_id,
+    error.pcb_hole_id,
+    error.pcb_keepout_id,
+    error.pcb_obstacle_id,
+  ].find((id): id is string => typeof id === "string" && id.length > 0)
+  const message = error.worst_contact_message ?? error.message
+  const quotedObstacle =
+    typeof message === "string"
+      ? message.match(
+          /\b(?:pcb_smtpad|pcb_plated_hole|pcb_hole|pcb_keepout)\s+"([^"]+)"/,
+        )?.[1]
+      : undefined
+  // Reference DRC may render IDs as readable names, e.g. pcb_smtpad[#pad_1].
+  const obstacleId =
+    explicitObstacleId ??
+    quotedObstacle?.match(/\[#([^\]]+)\]/)?.[1] ??
+    quotedObstacle
+  if (!obstacleId) return undefined
+  // Compare logical connections, not positional fragment IDs or net aliases.
+  // Splitting/reordering one connection preserves its electrical short to a
+  // pad; another connection on the same net still has a distinct identity.
+  const connectionName = snapshot.traceConnectionNameById?.get(traceId)
+  return JSON.stringify([
+    connectionName === undefined ? "trace" : "connection",
+    connectionName ?? traceId,
+    obstacleId,
+  ])
+}
+
+const getTraceObstacleOverlapIds = (
+  snapshot: DrcSnapshot,
+): Set<string | symbol> => {
+  const overlaps = new Set<string | symbol>()
   // Custom evaluators may omit contacts from the force-targeting list or
   // enrich only that list. Check both without changing repair targeting.
   const errors = snapshot.rawErrors
@@ -3358,10 +3401,9 @@ const getTraceObstacleOverlapIds = (snapshot: DrcSnapshot): Set<string> => {
         : typeof message === "string" &&
           message.includes("(accidental contact)")
     if (!overlapsCopper) continue
-    const id =
-      error.pcb_trace_error_id ?? error.pcb_pad_trace_clearance_error_id
     overlaps.add(
-      typeof id === "string" && id.length > 0 ? id : getDrcErrorIdentity(error),
+      getTraceObstaclePairIdentity(error, snapshot) ??
+        Symbol("unidentified trace-obstacle contact"),
     )
   }
   return overlaps

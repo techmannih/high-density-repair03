@@ -10,6 +10,7 @@ import {
   cloneRoutes,
   getNonViaPadDrcIssueCount,
   hasNewDrcErrorIdentities,
+  hasNewTraceObstacleOverlaps,
   getViaDrcIssueCount,
   isBetterDrcSnapshot,
   isDrcSnapshotCountBetter,
@@ -476,7 +477,11 @@ export class GlobalDrcBranchPortfolioSolver extends BaseSolver {
         this.autoroutingDrcEngine,
       )
       if (
-        isDrcSnapshotCountBetter(this.broadSnapshot, this.baselineSnapshot!)
+        isDrcSnapshotCountBetter(this.broadSnapshot, this.baselineSnapshot!) &&
+        // Broad preprocessing can introduce contacts before its child solver
+        // starts. Let that branch repair them, but compare the result against
+        // the portfolio's original input before selecting it.
+        !hasNewTraceObstacleOverlaps(this.broadSnapshot, this.inputSnapshot!)
       ) {
         this.startSafeTraceLayerPhase(
           broadRoutes,

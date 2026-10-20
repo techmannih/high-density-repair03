@@ -36,6 +36,8 @@ export type DrcEvaluator = DrcEvaluatorFunction & {
 }
 
 export type DrcSnapshot = {
+  /** Complete evaluator results, including errors omitted from force targeting. */
+  rawErrors?: DrcError[]
   errors: DrcError[]
   count: number
   issueScore: number

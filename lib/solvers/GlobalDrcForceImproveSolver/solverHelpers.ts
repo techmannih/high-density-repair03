@@ -269,6 +269,7 @@ const createDrcSnapshot = (
     >
 
     return {
+      rawErrors: errors,
       errors: errorsWithCenters,
       count: errors.length,
       issueScore: getDrcIssueScore(errorsWithCenters, policy.getErrorSeverity),
@@ -315,6 +316,7 @@ const createDrcSnapshot = (
     policy.projectEngineError(error as unknown as Record<string, unknown>),
   )
   return {
+    rawErrors,
     errors: rawErrorsWithCenters,
     count: rawErrors.length,
     issueScore: getDrcIssueScore(rawErrorsWithCenters, policy.getErrorSeverity),
@@ -3338,7 +3340,12 @@ export const getRepairDrcIssueScore = (snapshot: DrcSnapshot) => {
 
 const getTraceObstacleOverlapIds = (snapshot: DrcSnapshot): Set<string> => {
   const overlaps = new Set<string>()
-  for (const error of snapshot.errors) {
+  // Custom evaluators may omit contacts from the force-targeting list or
+  // enrich only that list. Check both without changing repair targeting.
+  const errors = snapshot.rawErrors
+    ? snapshot.rawErrors.concat(snapshot.errors)
+    : snapshot.errors
+  for (const error of errors) {
     if (!isTraceObstacleDrcError(error)) continue
     // A pair can have a safe first contact and an overlapping later segment.
     // Standard snapshots restore the first contact for force targeting, so

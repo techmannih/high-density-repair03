@@ -84,3 +84,20 @@ test("keeps an existing pad overlap eligible for same-count clearance improvemen
     isBetterDrcSnapshot(after, 0, before.count, before.issueScore, 0, before),
   ).toBe(true)
 })
+
+test("inspects both complete evaluator errors and enriched force-targeting metadata", () => {
+  const before = snapshot([])
+  const rawOnly = {
+    ...snapshot([]),
+    count: 1,
+    rawErrors: [padError("pad_a", -0.04)],
+  }
+  const enrichedOnly = {
+    ...snapshot([padError("pad_a", 0.07, { worst_actual_clearance: -0.04 })]),
+    rawErrors: [padError("pad_a", 0.07)],
+  }
+
+  expect(hasNewTraceObstacleOverlaps(rawOnly, before)).toBe(true)
+  expect(hasNewTraceObstacleOverlaps(enrichedOnly, before)).toBe(true)
+  expect(hasNewTraceObstacleOverlaps(enrichedOnly, rawOnly)).toBe(false)
+})

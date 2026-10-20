@@ -3336,6 +3336,40 @@ export const getRepairDrcIssueScore = (snapshot: DrcSnapshot) => {
   return snapshot.legacyIssueScore ?? getDrcIssueScore(legacyErrors)
 }
 
+const getTraceObstacleOverlapIds = (snapshot: DrcSnapshot): Set<string> => {
+  const overlaps = new Set<string>()
+  for (const error of snapshot.errors) {
+    if (!isTraceObstacleDrcError(error)) continue
+    // A pair can have a safe first contact and an overlapping later segment.
+    // Standard snapshots restore the first contact for force targeting, so
+    // acceptance must explicitly inspect the worst contact instead.
+    const clearance = error.worst_actual_clearance ?? error.actual_clearance
+    const message = error.worst_contact_message ?? error.message
+    const overlapsCopper =
+      typeof clearance === "number" && Number.isFinite(clearance)
+        ? clearance < -COORDINATE_EPSILON
+        : typeof message === "string" &&
+          message.includes("(accidental contact)")
+    if (!overlapsCopper) continue
+    const id =
+      error.pcb_trace_error_id ?? error.pcb_pad_trace_clearance_error_id
+    overlaps.add(
+      typeof id === "string" && id.length > 0 ? id : getDrcErrorIdentity(error),
+    )
+  }
+  return overlaps
+}
+
+export const hasNewTraceObstacleOverlaps = (
+  candidateSnapshot: DrcSnapshot,
+  bestSnapshot: DrcSnapshot,
+): boolean => {
+  const candidateOverlaps = getTraceObstacleOverlapIds(candidateSnapshot)
+  if (candidateOverlaps.size === 0) return false
+  const bestOverlaps = getTraceObstacleOverlapIds(bestSnapshot)
+  return [...candidateOverlaps].some((id) => !bestOverlaps.has(id))
+}
+
 export const isDrcSnapshotCountBetter = (
   candidateSnapshot: DrcSnapshot,
   bestSnapshot: DrcSnapshot,

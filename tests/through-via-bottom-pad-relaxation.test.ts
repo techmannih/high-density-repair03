@@ -54,7 +54,8 @@ test("via relaxation clears every physical drill layer without moving terminals"
         ]
         const before = structuredClone(routes)
         const engine = new AutoroutingDrcEngine(srj)
-        const shouldMove = !allowBlindAndBuriedVias || obstacleLayer === "inner1"
+        const shouldMove =
+          !allowBlindAndBuriedVias || obstacleLayer === "inner1"
         expect(
           getDrcSnapshot(srj, routes, undefined, undefined, engine).count,
         ).toBe(shouldMove ? 1 : 0)

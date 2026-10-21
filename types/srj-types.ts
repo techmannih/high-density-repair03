@@ -46,7 +46,7 @@ export interface SimpleRouteJson {
   minTraceWidth: number
   nominalTraceWidth?: number
   minViaDiameter?: number
-  /** Enables partial spans for implicit vias; explicit layers remain authoritative. */
+  /** Enables partial via spans; vias cross the full board by default. */
   allowBlindAndBuriedVias?: boolean
   minBoardEdgeClearance?: number
   minTraceToPadEdgeClearance?: number

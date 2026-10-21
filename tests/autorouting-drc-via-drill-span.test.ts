@@ -3,7 +3,7 @@ import { AutoroutingDrcEngine } from "../lib/drc/AutoroutingDrcEngine"
 import type { SimpleRouteJson, SimplifiedPcbTraces } from "../lib/types"
 import { convertToCircuitJson } from "../lib/utils/convertToCircuitJson"
 
-test("implicit vias cross the full board unless blind and buried vias are enabled", (): void => {
+test("via drill spans follow board policy for both endpoint and explicit layer APIs", (): void => {
   const srj: SimpleRouteJson = {
     layerCount: 4,
     minTraceWidth: 0.1,
@@ -37,21 +37,27 @@ test("implicit vias cross the full board unless blind and buried vias are enable
       ],
     },
   ]
-  const original = structuredClone(traces)
-  for (const allowBlindAndBuriedVias of [undefined, false, true]) {
-    srj.allowBlindAndBuriedVias = allowBlindAndBuriedVias
-    expect(new AutoroutingDrcEngine(srj).evaluate(traces).errors).toHaveLength(
-      allowBlindAndBuriedVias ? 0 : 1,
-    )
-    expect(
-      convertToCircuitJson(srj, traces).find(
-        (element) => element.type === "pcb_via",
-      ),
-    ).toMatchObject({
-      layers: allowBlindAndBuriedVias
-        ? ["top", "inner1", "inner2"]
-        : ["top", "inner1", "inner2", "bottom"],
-    })
+  for (const explicitLayers of [false, true]) {
+    const input = structuredClone(traces)
+    const via = input[0]!.route[0]!
+    if (via.route_type !== "via") throw new Error("Expected a via")
+    if (explicitLayers) via.layers = ["top", "inner1", "inner2"]
+    const original = structuredClone(input)
+    for (const allowBlindAndBuriedVias of [undefined, false, true]) {
+      srj.allowBlindAndBuriedVias = allowBlindAndBuriedVias
+      expect(new AutoroutingDrcEngine(srj).evaluate(input).errors).toHaveLength(
+        allowBlindAndBuriedVias ? 0 : 1,
+      )
+      expect(
+        convertToCircuitJson(srj, input).find(
+          (element) => element.type === "pcb_via",
+        ),
+      ).toMatchObject({
+        layers: allowBlindAndBuriedVias
+          ? ["top", "inner1", "inner2"]
+          : ["top", "inner1", "inner2", "bottom"],
+      })
+    }
+    expect(input).toEqual(original)
   }
-  expect(traces).toEqual(original)
 })

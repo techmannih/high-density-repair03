@@ -4794,7 +4794,6 @@ export const applyDrcErrorForces = (
     const center = getErrorCenter(error)
     if (!center) continue
     const vias = collectViaNodes(routes, srj)
-    const segments = collectSegments(routes)
     let repulsionPoint = center
 
     const viaIds = error.pcb_via_ids
@@ -4887,7 +4886,9 @@ export const applyDrcErrorForces = (
       enableCanonicalPairRepairs && !hasTraceViaMetadata
         ? getTraceRoutePairForError(error, traceRouteIndexById)
         : undefined
+    let segments: Segment[] | undefined
     if (traceRoutePair) {
+      segments = collectSegments(routes)
       const leftSegment = getNearestSegment(segments, center, traceRoutePair[0])
       const rightSegment = getNearestSegment(
         segments,
@@ -4916,7 +4917,11 @@ export const applyDrcErrorForces = (
         : undefined
     const nearestSegment = isObstacleError
       ? traceObstaclePair?.segment
-      : getNearestSegment(segments, center, routeIndex)
+      : getNearestSegment(
+          segments ?? collectSegments(routes),
+          center,
+          routeIndex,
+        )
     if (nearestSegment) {
       const nearestObstacle = isObstacleError
         ? traceObstaclePair?.obstacle

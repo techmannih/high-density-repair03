@@ -2,9 +2,19 @@ import { expect, test } from "bun:test"
 import { collectViaNodes } from "../lib/solvers/GlobalDrcForceImproveSolver/solverHelpers"
 import { COORDINATE_EPSILON } from "../lib/solvers/GlobalDrcForceImproveSolver/solverConfig"
 import type { HighDensityRoute } from "../lib/types/high-density-types"
+import type { SimpleRouteJson } from "../lib/types"
 
 test("collects terminal and repeated via groups without changing route inputs", () => {
   const epsilon = COORDINATE_EPSILON
+  const srj: SimpleRouteJson = {
+    layerCount: 4,
+    allowBlindAndBuriedVias: true,
+    minTraceWidth: 0.15,
+    minViaDiameter: 0.3,
+    bounds: { minX: -5, minY: -5, maxX: 5, maxY: 5 },
+    connections: [],
+    obstacles: [],
+  }
   const routes: HighDensityRoute[] = [
     {
       connectionName: "terminal-and-interior",
@@ -124,7 +134,7 @@ test("collects terminal and repeated via groups without changing route inputs", 
       routeIndex: 4,
       rootConnectionName: "reversed-skip-stack",
       pointIndexes: [0, 1, 2],
-      zLayers: [3, 1, 2],
+      zLayers: [1, 2, 3],
       x: -2,
       y: -2,
       radius: 0.4,
@@ -133,8 +143,13 @@ test("collects terminal and repeated via groups without changing route inputs", 
     },
   ]
 
-  expect(collectViaNodes(routes)).toEqual(expected)
-  expect(collectViaNodes(routes, 0.9)).toEqual(expected)
-  expect(collectViaNodes([])).toEqual([])
+  expect(collectViaNodes(routes, srj)).toEqual(expected)
+  expect(collectViaNodes(routes, { ...srj, minViaDiameter: 0.9 })).toEqual(
+    expected,
+  )
+  expect(
+    collectViaNodes(routes, { ...srj, allowBlindAndBuriedVias: false }),
+  ).toEqual(expected.map((via) => ({ ...via, zLayers: [0, 1, 2, 3] })))
+  expect(collectViaNodes([], srj)).toEqual([])
   expect(routes).toEqual(originalRoutes)
 })

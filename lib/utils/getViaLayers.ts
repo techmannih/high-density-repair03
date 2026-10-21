@@ -24,3 +24,21 @@ export const getViaLayers = (via: ViaLayers, layerCount: number): string[] => {
   }
   return boardLayers.slice(Math.min(from, to), Math.max(from, to) + 1)
 }
+
+/** Explicit layers describe the drill; implicit routed vias are through-hole. */
+export const getViaDrillLayers = (
+  via: ViaLayers,
+  layerCount: number,
+  allowBlindAndBuriedVias = false,
+): string[] => {
+  if (via.layers !== undefined || allowBlindAndBuriedVias) {
+    return getViaLayers(via, layerCount)
+  }
+  return getViaLayers(
+    {
+      from_layer: "top",
+      to_layer: mapZToLayerName(layerCount - 1, layerCount),
+    },
+    layerCount,
+  )
+}

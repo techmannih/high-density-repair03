@@ -360,7 +360,7 @@ export const getTopologyRepairDrcSnapshot = (
 
 export const collectViaNodes = (
   routes: HighDensityRoute[],
-  defaultViaDiameter = 0.3,
+  srj: SimpleRouteJson,
 ): ViaNode[] => {
   const vias: ViaNode[] = []
 
@@ -409,14 +409,21 @@ export const collectViaNodes = (
         Boolean(route.route[pointIndex]?.pcb_port_id),
       )
 
+      let minZ = 0
+      let maxZ = srj.layerCount - 1
+      if (srj.allowBlindAndBuriedVias) {
+        const endpointZ = uniquePointIndexes.map((i) => route.route[i]!.z)
+        minZ = Math.min(...endpointZ)
+        maxZ = Math.max(...endpointZ)
+      }
       vias.push({
         routeIndex,
         rootConnectionName: getRootConnectionName(route),
         pointIndexes: uniquePointIndexes,
-        zLayers: [...new Set(uniquePointIndexes.map((i) => route.route[i]!.z))],
+        zLayers: Array.from({ length: maxZ - minZ + 1 }, (_, z) => minZ + z),
         x: current.x,
         y: current.y,
-        radius: (route.viaDiameter ?? defaultViaDiameter) / 2,
+        radius: (route.viaDiameter ?? srj.minViaDiameter ?? 0.3) / 2,
         movable: endpointPointIndexes.length === 0,
         canCanonicalize:
           endpointPointIndexes.length === 0 || !hasTaggedTerminal,
@@ -1991,13 +1998,14 @@ const translateVia = (
 export const getSameRootViaSite = (
   routes: MutableRoute[],
   via: ViaNode,
+  srj: SimpleRouteJson,
 ): ViaNode[] => {
   if (!Number.isInteger(via.routeIndex)) return []
   const currentRoute = routes[via.routeIndex]
   if (!currentRoute || via.routeIndex < 0 || via.routeIndex >= routes.length)
     return []
 
-  const currentRouteVias = collectViaNodes([currentRoute])
+  const currentRouteVias = collectViaNodes([currentRoute], srj)
   const currentVia = currentRouteVias.find((candidate) =>
     candidate.pointIndexes.some((pointIndex) =>
       via.pointIndexes.includes(pointIndex),
@@ -2019,7 +2027,7 @@ export const getSameRootViaSite = (
     const routeVias =
       routeIndex === via.routeIndex
         ? currentRouteVias
-        : collectViaNodes([route])
+        : collectViaNodes([route], srj)
     for (const candidate of routeVias) {
       candidate.routeIndex = routeIndex
       if (
@@ -2041,7 +2049,7 @@ const translateSameRootViaSite = (
   dy: number,
   srj: SimpleRouteJson,
 ) => {
-  const siteVias = getSameRootViaSite(routes, via)
+  const siteVias = getSameRootViaSite(routes, via, srj)
   if (
     siteVias.length === 0 ||
     siteVias.some(
@@ -2079,7 +2087,7 @@ const moveVia = (
   srj: SimpleRouteJson,
 ) =>
   via.movable &&
-  getSameRootViaSite(routes, via).length <= 1 &&
+  getSameRootViaSite(routes, via, srj).length <= 1 &&
   translateVia(routes, via, dx, dy, srj)
 
 const moveSegmentAwayFromPoint = (
@@ -3001,7 +3009,7 @@ const applyBroadRepulsionPass = (
   netMatchers?: BroadNetMatchers,
 ): boolean => {
   let changed = false
-  const vias = collectViaNodes(routes)
+  const vias = collectViaNodes(routes, srj)
   const segments = collectSegments(routes)
   const spatialInteractionDistance = getBroadSpatialInteractionDistance(
     srj,
@@ -3121,7 +3129,7 @@ const applyBroadViaSegmentCleanupPass = (
   netMatchers?: BroadNetMatchers,
 ): boolean => {
   let changed = false
-  const vias = collectViaNodes(routes)
+  const vias = collectViaNodes(routes, srj)
   const segments = collectSegments(routes)
   const spatialInteractionDistance = getBroadSpatialInteractionDistance(
     srj,
@@ -4267,7 +4275,7 @@ export const applyViaOnlyDisplacementForTraceError = (
     center,
     expectedTraceRouteIndex,
   )
-  const via = getNearestVia(collectViaNodes(routes), center)
+  const via = getNearestVia(collectViaNodes(routes, srj), center)
   if (
     !segment ||
     !via ||
@@ -4781,7 +4789,7 @@ export const applyDrcErrorForces = (
   enableTraceViaOwnerTargeting = false,
 ) => {
   let changed = false
-  const vias = collectViaNodes(routes)
+  const vias = collectViaNodes(routes, srj)
   const segments = collectSegments(routes)
 
   for (const error of errors) {

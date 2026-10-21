@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
 import type { SimpleRouteJson } from "../lib/types"
+import type { HighDensityRoute } from "../lib/types/high-density-types"
 import { convertToCircuitJson } from "../lib/utils/convertToCircuitJson"
 
-test("HD conversion expands a four-layer via span using the actual stack", () => {
+test("HD conversion preserves travel endpoints while exporting physical via spans", () => {
   const srj: SimpleRouteJson = {
     layerCount: 4,
     minTraceWidth: 0.1,
@@ -10,7 +11,7 @@ test("HD conversion expands a four-layer via span using the actual stack", () =>
     obstacles: [],
     connections: [],
   }
-  const json = convertToCircuitJson(srj, [
+  const routes: HighDensityRoute[] = [
     {
       connectionName: "signal",
       traceThickness: 0.1,
@@ -23,9 +24,19 @@ test("HD conversion expands a four-layer via span using the actual stack", () =>
         { x: 1, y: 0, z: 2 },
       ],
     },
-  ])
-  const via = json.find((element) => element.type === "pcb_via")
-  expect(via?.layers).toEqual(["top", "inner1", "inner2"])
-  const trace = json.find((element) => element.type === "pcb_trace")
-  expect(trace?.route.at(-1)).toMatchObject({ layer: "inner2" })
+  ]
+  for (const allowBlindAndBuriedVias of [undefined, false, true]) {
+    const json = convertToCircuitJson(
+      { ...srj, allowBlindAndBuriedVias },
+      routes,
+    )
+    const via = json.find((element) => element.type === "pcb_via")
+    expect(via?.layers).toEqual(
+      allowBlindAndBuriedVias
+        ? ["top", "inner1", "inner2"]
+        : ["top", "inner1", "inner2", "bottom"],
+    )
+    const trace = json.find((element) => element.type === "pcb_trace")
+    expect(trace?.route.at(-1)).toMatchObject({ layer: "inner2" })
+  }
 })

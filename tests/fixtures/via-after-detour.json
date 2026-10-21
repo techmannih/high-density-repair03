@@ -1,0 +1,163 @@
+{
+  "srj": {
+    "bounds": {
+      "minX": -36,
+      "maxX": 36,
+      "minY": -22,
+      "maxY": 22
+    },
+    "obstacles": [
+      {
+        "type": "rect",
+        "layers": ["bottom"],
+        "center": {
+          "x": 13.7,
+          "y": -13.85
+        },
+        "width": 0.4,
+        "height": 0.51,
+        "connectedTo": ["source_trace_117", "pcb_port_443"]
+      }
+    ],
+    "connections": [],
+    "layerCount": 4,
+    "minTraceWidth": 0.1
+  },
+  "routes": [
+    {
+      "connectionName": "source_trace_117__source_net_117_mst3",
+      "rootConnectionName": "source_trace_117",
+      "startPcbPortId": "pcb_port_443",
+      "endPcbPortId": "pcb_port_388",
+      "traceThickness": 0.1,
+      "viaDiameter": 0.3,
+      "route": [
+        {
+          "x": 13.7,
+          "y": -13.85,
+          "z": 3,
+          "traceThickness": 0.1,
+          "pcb_port_id": "pcb_port_443"
+        },
+        {
+          "x": 13.9,
+          "y": -13.85,
+          "z": 3,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 13.902,
+          "y": -14.103,
+          "z": 3,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 14.18467524344093,
+          "y": -13.751581277416593,
+          "z": 3,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 14.18467524344093,
+          "y": -13.751581277416593,
+          "z": 0,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 14.119859806480545,
+          "y": -13.873357311117886,
+          "z": 0,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 14.464254307263582,
+          "y": -13.595000999999998,
+          "z": 0,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 15.739105867672166,
+          "y": -14.869852560408582,
+          "z": 0,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 18.030147439591417,
+          "y": -14.869852560408582,
+          "z": 0,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 18.030147439591417,
+          "y": -14.869852560408582,
+          "z": 0,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 18.005,
+          "y": -14.895,
+          "z": 0,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 18.005,
+          "y": -14.895,
+          "z": 3,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 18.005,
+          "y": -14.545,
+          "z": 3,
+          "traceThickness": 0.1
+        },
+        {
+          "x": 18.7,
+          "y": -13.85,
+          "z": 3,
+          "traceThickness": 0.1,
+          "pcb_port_id": "pcb_port_388"
+        }
+      ],
+      "vias": [
+        {
+          "x": 14.18467524344093,
+          "y": -13.751581277416593
+        },
+        {
+          "x": 18.005,
+          "y": -14.895
+        }
+      ],
+      "jumpers": []
+    }
+  ],
+  "error": {
+    "type": "pcb_trace_error",
+    "error_type": "pcb_trace_error",
+    "message": "PCB trace source_trace_117__source_net_117_mst3_0 overlaps with pcb_via \"via_359\" (accidental contact)",
+    "pcb_trace_id": "source_trace_117__source_net_117_mst3_0",
+    "source_trace_id": "",
+    "pcb_trace_error_id": "overlap_source_trace_117__source_net_117_mst3_0_via_359",
+    "minimum_clearance": 0.1,
+    "actual_clearance": -0.03158556788051482,
+    "pcb_component_ids": [],
+    "pcb_port_ids": ["pcb_port_443", "pcb_port_388"],
+    "center": {
+      "x": 13.957140250330117,
+      "y": -13.788146568173271
+    },
+    "first_contact_center": {
+      "x": 13.957140250330117,
+      "y": -13.788146568173271
+    },
+    "first_contact_message": "PCB trace source_trace_117__source_net_117_mst3_0 overlaps with pcb_via \"via_359\" (accidental contact)",
+    "first_actual_clearance": -0.03158556788051482,
+    "worst_contact_center": {
+      "x": 14.072183472079107,
+      "y": -13.7728693017297
+    },
+    "worst_contact_message": "PCB trace source_trace_117__source_net_117_mst3_0 overlaps with pcb_via \"via_359\" (accidental contact)",
+    "worst_actual_clearance": -0.05
+  }
+}
